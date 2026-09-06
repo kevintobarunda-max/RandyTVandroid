@@ -17,6 +17,7 @@ import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import io.github.anilbeesetti.nextlib.media3ext.ffdecoder.NextRenderersFactory
 import com.randytv.mobile.data.model.LiveStream
 import com.randytv.mobile.data.network.ApiConfig
 import kotlinx.coroutines.*
@@ -25,17 +26,20 @@ class PlayerController(context: Context) {
 
     private val audioAttrs = AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build()
 
-    // INICIO RAPIDO: solo 500ms para empezar, pero buffer grande para no cortarse
+    // INICIO RAPIDO pero buffer ajustado para POCA RAM (proyector 2GB).
+    // Antes: maxBuffer 120s (podia reservar mucha memoria con dos players a la vez).
+    // Ahora: 2s para empezar, hasta 30s de buffer maximo -> arranque rapido y bajo consumo.
     private val fastBuffer = DefaultLoadControl.Builder()
-        .setBufferDurationsMs(5000, 120000, 500, 5000)
+        .setBufferDurationsMs(2000, 30000, 500, 2000)
         .build()
 
-    // Habilita decodificadores de extension (software) como respaldo si el hardware
-    // no soporta el codec de audio (AC3/EAC3/DTS). Sin la extension FFmpeg compilada
-    // desde codigo fuente esto no tiene efecto propio, pero es seguro dejarlo activo
-    // para cuando se agregue esa extension mas adelante.
-    private val renderersFactory = DefaultRenderersFactory(context)
-        .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+    // NextRenderersFactory habilita los decodificadores FFmpeg por software incluidos en NextLib.
+    // Con EXTENSION_RENDERER_MODE_PREFER, cuando un codec de audio no lo soporta el hardware del
+    // proyector (AC3/E-AC3/DTS/MP2/TrueHD...), ExoPlayer usa el decodificador de software y el
+    // audio SI se escucha. Para video se mantiene el hardware (mas eficiente en equipos de 2GB).
+    private val renderersFactory = NextRenderersFactory(context)
+        .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+        .setEnableDecoderFallback(true)
 
     val player1: ExoPlayer = ExoPlayer.Builder(context, renderersFactory).setLoadControl(fastBuffer).build().apply {
         playWhenReady = true; setAudioAttributes(audioAttrs, true)
