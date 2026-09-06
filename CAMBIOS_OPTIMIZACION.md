@@ -47,8 +47,14 @@ Se añadió `app/proguard-rules.pro` para que R8 (minify de release) **no elimin
 clases nativas de NextLib/FFmpeg ni las de Media3. Sin esto, el audio por software funcionaría en
 debug pero podría romperse en el APK de release.
 
-Además se alineó **Media3 a la versión 1.5.1** (la misma que empaqueta NextLib 0.8.4) para evitar
-conflictos de versiones entre el ExoPlayer de la app y el de la extensión.
+Además se alineó **Media3 a la versión 1.7.1** (la misma que empaqueta NextLib `1.7.1-0.9.0`, que es
+la variante publicada en Maven Central) para evitar conflictos de versiones entre el ExoPlayer de la
+app y el de la extensión.
+
+Como Media3 1.7.1 exige compilar con **`compileSdk 35`**, se subió el `compileSdk` de 34 a 35 y el
+**Android Gradle Plugin de 8.2.0 a 8.7.2** (compatible con el Gradle 8.14.5 del wrapper y con
+Kotlin 1.9.20). Esto NO cambia el `minSdk` (sigue en 21) ni el `targetSdk` (sigue en 34), así que la
+app sigue funcionando desde Android 5 en adelante.
 
 ---
 

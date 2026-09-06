@@ -5,7 +5,8 @@ plugins {
 
 android {
     namespace = "com.randytv.mobile"
-    compileSdk = 34
+    // compileSdk 35 es requerido por Media3 1.7.1 (las versiones recientes exigen SDK 35+).
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.randytv.mobile"
@@ -78,18 +79,20 @@ dependencies {
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
-    // Media3 1.5.1: alineado con la versión que empaqueta NextLib (nextlib-media3ext 0.8.4)
-    // para evitar conflictos de clases entre el ExoPlayer de la app y el de la extensión FFmpeg.
-    implementation("androidx.media3:media3-exoplayer:1.5.1")
-    implementation("androidx.media3:media3-exoplayer-hls:1.5.1")
-    implementation("androidx.media3:media3-exoplayer-dash:1.5.1")
-    implementation("androidx.media3:media3-datasource-okhttp:1.5.1")
-    implementation("androidx.media3:media3-ui:1.5.1")
+    // Media3 1.7.1: alineado con la versión que empaqueta NextLib (nextlib-media3ext 1.7.1-0.9.0,
+    // la variante publicada en Maven Central) para evitar conflictos de clases entre el ExoPlayer
+    // de la app y el de la extensión FFmpeg.
+    implementation("androidx.media3:media3-exoplayer:1.7.1")
+    implementation("androidx.media3:media3-exoplayer-hls:1.7.1")
+    implementation("androidx.media3:media3-exoplayer-dash:1.7.1")
+    implementation("androidx.media3:media3-datasource-okhttp:1.7.1")
+    implementation("androidx.media3:media3-ui:1.7.1")
     // NextLib: decodificadores FFmpeg por software (AC3, E-AC3, DTS/dca, MP3, AAC, TrueHD, MLP,
     // Vorbis, Opus, FLAC, ALAC, PCM, AMR...). Resuelve los títulos que "no se escuchan" cuando el
     // proyector no trae decodificador de hardware para ese códec de audio. Trae binarios ya
-    // compilados, no requiere compilar FFmpeg con el NDK.
-    implementation("io.github.anilbeesetti:nextlib-media3ext:0.8.4")
+    // compilados, no requiere compilar FFmpeg con el NDK. El formato de versión es
+    // <version-media3>-<version-nextlib>.
+    implementation("io.github.anilbeesetti:nextlib-media3ext:1.7.1-0.9.0")
     implementation("io.coil-kt:coil-compose:2.5.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.google.code.gson:gson:2.10.1")
