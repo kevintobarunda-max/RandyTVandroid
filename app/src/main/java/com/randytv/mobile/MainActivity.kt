@@ -1,7 +1,9 @@
 package com.randytv.mobile
 
+import android.media.AudioManager
 import android.os.Bundle
 import android.util.Log
+import android.view.KeyEvent
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -46,6 +48,39 @@ class MainActivity : ComponentActivity() {
             if (pc != null) { RandyTVApp(pc, repository) }
             else { Box(modifier = Modifier.fillMaxSize().background(Color.Red), contentAlignment = Alignment.Center) { Column(horizontalAlignment = Alignment.CenterHorizontally) { Text("ERROR", color = Color.White, fontSize = 32.sp, fontWeight = FontWeight.Bold); Spacer(modifier = Modifier.height(8.dp)); Text(errorMsg, color = Color.White, fontSize = 14.sp) } } }
         }
+    }
+
+    // Se intercepta aqui (a nivel de Activity) y NO dentro de un Modifier.onKeyEvent de Compose
+    // porque el reproductor de video usa un SurfaceView (AndroidView) para pintar el video; ese
+    // SurfaceView puede quedarse con el foco de teclado nativo mientras se reproduce, y en ese caso
+    // los eventos de teclado NUNCA llegan al onKeyEvent de Compose (por eso el boton de volumen
+    // "no respondia" durante la reproduccion). dispatchKeyEvent se ejecuta ANTES que cualquier
+    // vista/foco interno, así que aqui el volumen SIEMPRE responde, se este reproduciendo o no.
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN) {
+            when (event.keyCode) {
+                KeyEvent.KEYCODE_VOLUME_UP -> {
+                    (getSystemService(AUDIO_SERVICE) as? AudioManager)?.adjustStreamVolume(
+                        AudioManager.STREAM_MUSIC, AudioManager.ADJUST_RAISE, AudioManager.FLAG_SHOW_UI
+                    )
+                    return true
+                }
+                KeyEvent.KEYCODE_VOLUME_DOWN -> {
+                    (getSystemService(AUDIO_SERVICE) as? AudioManager)?.adjustStreamVolume(
+                        AudioManager.STREAM_MUSIC, AudioManager.ADJUST_LOWER, AudioManager.FLAG_SHOW_UI
+                    )
+                    return true
+                }
+                KeyEvent.KEYCODE_VOLUME_MUTE -> {
+                    val muteAdjust = if (android.os.Build.VERSION.SDK_INT >= 23) AudioManager.ADJUST_TOGGLE_MUTE else AudioManager.ADJUST_LOWER
+                    (getSystemService(AUDIO_SERVICE) as? AudioManager)?.adjustStreamVolume(
+                        AudioManager.STREAM_MUSIC, muteAdjust, AudioManager.FLAG_SHOW_UI
+                    )
+                    return true
+                }
+            }
+        }
+        return super.dispatchKeyEvent(event)
     }
 
     override fun onDestroy() { super.onDestroy(); try { playerController?.release() } catch (_: Exception) {}; try { repository.cancel() } catch (_: Exception) {} }

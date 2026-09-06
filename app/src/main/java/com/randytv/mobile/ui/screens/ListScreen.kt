@@ -2,7 +2,6 @@ package com.randytv.mobile.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -18,7 +17,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -54,7 +52,7 @@ fun ListScreen(type: ListType, showSimpsons: Boolean = false, repository: DataRe
     Column(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         // Top bar
         Row(modifier = Modifier.fillMaxWidth().background(Color(0xFF111111)).padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onHome, modifier = Modifier.size(36.dp).focusable()) { Icon(Icons.Default.Home, "Home", tint = FocusGreen, modifier = Modifier.size(20.dp)) }
+            IconButton(onClick = onHome, modifier = Modifier.size(36.dp).tvFocusable()) { Icon(Icons.Default.Home, "Home", tint = FocusGreen, modifier = Modifier.size(20.dp)) }
             Spacer(modifier = Modifier.width(10.dp))
             Text(when { showSimpsons -> "SIMPSONS"; type == ListType.LIVE -> "TV EN VIVO"; type == ListType.VOD -> "PELICULAS"; else -> "SERIES" }, fontSize = 14.sp, fontWeight = FontWeight.Black, color = if (showSimpsons) Color.Yellow else FocusGreen)
             Spacer(modifier = Modifier.weight(1f))
@@ -78,8 +76,8 @@ fun ListScreen(type: ListType, showSimpsons: Boolean = false, repository: DataRe
             } else {
                 Box(
                     modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(Color(0x0DFFFFFF))
-                        .clickable { searchOpen = true }.focusable()
-                        .onFocusChanged { if (it.isFocused) searchOpen = true }
+                        .clickable { searchOpen = true }
+                        .tvFocusable { if (it) searchOpen = true }
                         .padding(horizontal = 10.dp, vertical = 6.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {

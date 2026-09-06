@@ -34,11 +34,16 @@ class PlayerController(context: Context) {
         .build()
 
     // NextRenderersFactory habilita los decodificadores FFmpeg por software incluidos en NextLib.
-    // Con EXTENSION_RENDERER_MODE_PREFER, cuando un codec de audio no lo soporta el hardware del
-    // proyector (AC3/E-AC3/DTS/MP2/TrueHD...), ExoPlayer usa el decodificador de software y el
-    // audio SI se escucha. Para video se mantiene el hardware (mas eficiente en equipos de 2GB).
+    // IMPORTANTE: usamos EXTENSION_RENDERER_MODE_ON (no PREFER). Con ON, ExoPlayer intenta PRIMERO
+    // el decodificador de HARDWARE (rapido, poca CPU) para cada pista de audio/video; solo si el
+    // hardware no soporta ese codec (AC3/E-AC3/DTS/TrueHD...) recurre al decodificador FFmpeg por
+    // software. Con PREFER (usado antes) el software se probaba SIEMPRE primero, incluso para AAC/
+    // MP3 que el hardware YA reproduce bien -- eso rompia el audio en varios titulos que antes
+    // sonaban, porque el decodificador FFmpeg de AAC no maneja igual todos los perfiles (HE-AAC,
+    // multicanal, etc). Con ON, esos titulos vuelven a usar hardware y siguen sonando, y los
+    // titulos con codecs no soportados por hardware siguen cayendo al fallback de software.
     private val renderersFactory = NextRenderersFactory(context)
-        .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+        .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
         .setEnableDecoderFallback(true)
 
     val player1: ExoPlayer = ExoPlayer.Builder(context, renderersFactory).setLoadControl(fastBuffer).build().apply {
@@ -89,6 +94,25 @@ class PlayerController(context: Context) {
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     val aspectModes = listOf("Auto", "16:9", "4:3", "Fill")
 
+    // --- Control de concurrencia para el zapping (cambio de canal) -----------------------------
+    // Antes, cada pulsacion de "siguiente/anterior canal" lanzaba una corrutina que esperaba a que
+    // el reproductor en espera estuviera listo. Si el usuario pulsaba varias veces rapido (lo
+    // normal al hacer zapping), las corrutinas viejas seguian vivas y "se pisaban" con la nueva:
+    // una corrutina vieja podia terminar tarde y pintar el nombre/logo de UN canal distinto al que
+    // realmente estaba en pantalla (el bug del "logo que no es"), o pelear por el mismo reproductor
+    // en espera y trabarlo. zapToken se incrementa en cada pulsacion; toda corrutina en vuelo debe
+    // verificar que su token siga siendo el vigente antes de tocar el estado visible (titulo, logo,
+    // showPlayer1, nextReady/nextIdx). Si no coincide, se descarta en silencio: ya quedo obsoleta.
+    private var zapToken = 0L
+    private var tuneJob: Job? = null
+    private var preloadJob: Job? = null
+    private var lastDirection = 1 // +1 = siguiente canal, -1 = anterior. Se usa para precargar en la direccion que el usuario esta usando.
+
+    private fun cancelPendingZapWork() {
+        tuneJob?.cancel(); tuneJob = null
+        preloadJob?.cancel(); preloadJob = null
+    }
+
     val activePlayer: ExoPlayer get() = if (showPlayer1) player1 else player2
     val standbyPlayer: ExoPlayer get() = if (showPlayer1) player2 else player1
 
@@ -120,80 +144,107 @@ class PlayerController(context: Context) {
     }
 
     fun playLive(streamId: String, name: String, icon: String) {
+        cancelPendingZapWork()
+        val token = ++zapToken
         isLive = true; title = name; logo = icon; isPlaying = true; showPlayer1 = true
         isTuning = true; tuningProgress = 0f
         player1AudioUnavailable = false; player2AudioUnavailable = false
+        nextReady = false; nextIdx = -1
         player2.stop(); player2.volume = 0f
         player1.setMediaItem(MediaItem.fromUri(ApiConfig.liveUrl(streamId)))
         player1.prepare(); forcePlay(player1)
-        scope.launch {
-            var w = 0; while (player1.playbackState != Player.STATE_READY && w < 10000) { delay(50); w += 50; tuningProgress = (w / 10000f).coerceAtMost(0.95f) }
-            tuningProgress = 1f; delay(100); isTuning = false
+        tuneJob = scope.launch {
+            var w = 0
+            while (player1.playbackState != Player.STATE_READY && w < 10000) {
+                delay(50); w += 50
+                if (token != zapToken) return@launch
+                tuningProgress = (w / 10000f).coerceAtMost(0.95f)
+            }
+            if (token != zapToken) return@launch
+            tuningProgress = 1f; delay(100)
+            if (token == zapToken) isTuning = false
         }
-        // Precargar siguiente INMEDIATO
-        scope.launch { delay(30); preloadNext() }
+        // Precargar el siguiente canal (en la direccion en la que se venia haciendo zapping) casi
+        // de inmediato, para que si el usuario sigue cambiando de canal el salto sea instantaneo.
+        preloadJob = scope.launch { delay(30); if (token == zapToken) preloadAdjacent(token, lastDirection) }
     }
 
-    private fun preloadNext() {
-        if (channels.isEmpty() || !isLive) return
-        val nIdx = (currentIdx + 1) % channels.size
+    // Prepara en el reproductor "en espera" el canal adyacente (siguiente o anterior segun
+    // direction) al que esta activo AHORA MISMO (currentIdx). Valida el token antes y despues de
+    // esperar para no pisar el estado si el usuario ya cambio de canal mientras tanto.
+    private fun preloadAdjacent(token: Long, direction: Int) {
+        if (channels.isEmpty() || !isLive || token != zapToken) return
+        val nIdx = (currentIdx + direction + channels.size) % channels.size
         val ch = channels[nIdx]
         standbyPlayer.stop()
         standbyPlayer.setMediaItem(MediaItem.fromUri(ApiConfig.liveUrl(ch.streamId.toString())))
         standbyPlayer.prepare(); standbyPlayer.playWhenReady = true; standbyPlayer.play(); standbyPlayer.volume = 0f
-        // Esperar a que este listo
         scope.launch {
-            var w = 0; while (standbyPlayer.playbackState != Player.STATE_READY && w < 30000) { delay(100); w += 100 }
+            var w = 0
+            while (standbyPlayer.playbackState != Player.STATE_READY && w < 30000) {
+                delay(100); w += 100
+                if (token != zapToken) return@launch // el usuario ya siguio cambiando de canal: descartar
+            }
+            if (token != zapToken) return@launch
             if (standbyPlayer.playbackState == Player.STATE_READY) { nextReady = true; nextIdx = nIdx; Log.d("RandyTV", "PRELOAD LISTO: ${ch.name}") }
         }
     }
 
-    fun zapNext() {
+    fun zapNext() = zap(direction = 1)
+    fun zapPrev() = zap(direction = -1)
+
+    // Cambia al canal siguiente/anterior. Usa zapToken para invalidar de forma segura cualquier
+    // trabajo pendiente de pulsaciones anteriores: si el usuario pulsa varias veces rapido, solo la
+    // ULTIMA pulsacion puede terminar actualizando el video/estado visible; las anteriores se
+    // abandonan en cuanto detectan que su token quedo obsoleto. Esto evita el bug de "se ve el logo
+    // de un canal que no es" (una corrutina vieja pintando datos tarde) y el freeze al zapear rapido.
+    private fun zap(direction: Int) {
         if (channels.isEmpty()) return
-        currentIdx = (currentIdx + 1) % channels.size
+        cancelPendingZapWork()
+        val token = ++zapToken
+        lastDirection = direction
+        currentIdx = (currentIdx + direction + channels.size) % channels.size
         val ch = channels[currentIdx]
 
+        // Feedback INMEDIATO: nombre y logo cambian al instante al pulsar el boton, sin esperar a
+        // que el video este listo. Es lo que hace que el zapping SE SIENTA instantaneo aunque el
+        // video tarde unos milisegundos en aparecer.
+        title = ch.name; logo = ch.streamIcon
+        player1AudioUnavailable = false; player2AudioUnavailable = false
+
         if (nextReady && nextIdx == currentIdx) {
-            // CAMBIO INSTANTANEO
+            // Ya estaba precargado exactamente este canal -> swap real instantaneo.
             forcePlay(standbyPlayer)
             activePlayer.volume = 0f; activePlayer.stop()
-            title = ch.name; logo = ch.streamIcon
             showPlayer1 = !showPlayer1; nextReady = false; nextIdx = -1
             isTuning = false; tuningProgress = 1f
-            scope.launch { delay(30); preloadNext() }
+            preloadJob = scope.launch { delay(30); if (token == zapToken) preloadAdjacent(token, direction) }
         } else {
-            // No precargado - cargar rapido en standby
+            // No estaba precargado (cambio de direccion, salto de varios canales, o el usuario
+            // zapeo mas rapido de lo que tardo la precarga anterior). Se prepara en el reproductor
+            // en espera SIN detener el que esta en pantalla, para no dejar la imagen congelada
+            // mientras carga; solo se hace el swap cuando el nuevo canal esta REALMENTE listo.
             isTuning = true; tuningProgress = 0f
+            nextReady = false; nextIdx = -1
             standbyPlayer.stop()
             standbyPlayer.setMediaItem(MediaItem.fromUri(ApiConfig.liveUrl(ch.streamId.toString())))
             standbyPlayer.prepare(); standbyPlayer.playWhenReady = true; standbyPlayer.play(); standbyPlayer.volume = 0f
-            scope.launch {
-                var w = 0; while (standbyPlayer.playbackState != Player.STATE_READY && w < 10000) { delay(50); w += 50; tuningProgress = (w / 10000f).coerceAtMost(0.95f) }
+            tuneJob = scope.launch {
+                var w = 0
+                while (standbyPlayer.playbackState != Player.STATE_READY && w < 10000) {
+                    delay(50); w += 50
+                    if (token != zapToken) return@launch // pulsacion obsoleta: abandonar sin tocar la UI ni el estado
+                    tuningProgress = (w / 10000f).coerceAtMost(0.95f)
+                }
+                if (token != zapToken) return@launch
                 tuningProgress = 1f
                 forcePlay(standbyPlayer); activePlayer.volume = 0f; activePlayer.stop()
-                title = ch.name; logo = ch.streamIcon
-                showPlayer1 = !showPlayer1; nextReady = false; nextIdx = -1
-                delay(30); isTuning = false; preloadNext()
+                showPlayer1 = !showPlayer1
+                delay(30)
+                if (token != zapToken) return@launch
+                isTuning = false
+                preloadAdjacent(token, direction)
             }
-        }
-    }
-
-    fun zapPrev() {
-        if (channels.isEmpty()) return
-        currentIdx = (currentIdx - 1 + channels.size) % channels.size
-        val ch = channels[currentIdx]
-        nextReady = false; nextIdx = -1
-        isTuning = true; tuningProgress = 0f
-        standbyPlayer.stop()
-        standbyPlayer.setMediaItem(MediaItem.fromUri(ApiConfig.liveUrl(ch.streamId.toString())))
-        standbyPlayer.prepare(); standbyPlayer.playWhenReady = true; standbyPlayer.play(); standbyPlayer.volume = 0f
-        scope.launch {
-            var w = 0; while (standbyPlayer.playbackState != Player.STATE_READY && w < 10000) { delay(50); w += 50; tuningProgress = (w / 10000f).coerceAtMost(0.95f) }
-            tuningProgress = 1f
-            forcePlay(standbyPlayer); activePlayer.volume = 0f; activePlayer.stop()
-            title = ch.name; logo = ch.streamIcon
-            showPlayer1 = !showPlayer1
-            delay(30); isTuning = false; preloadNext()
         }
     }
 
@@ -235,7 +286,7 @@ class PlayerController(context: Context) {
     fun updateProgress() { if (isSeeking) return; val d = activePlayer.duration; val p = activePlayer.currentPosition; if (d > 0) { progress = p.toFloat() / d.toFloat(); timeStr = fmt(p); durationStr = fmt(d) } }
     private fun fmt(ms: Long): String { val s = (ms / 1000).toInt(); return String.format("%02d:%02d", s / 60, s % 60) }
 
-    fun stopAll() { player1.stop(); player2.stop(); player1.clearMediaItems(); player2.clearMediaItems(); nextReady = false; nextIdx = -1; isTuning = false }
+    fun stopAll() { cancelPendingZapWork(); zapToken++; player1.stop(); player2.stop(); player1.clearMediaItems(); player2.clearMediaItems(); nextReady = false; nextIdx = -1; isTuning = false }
     fun stop() { stopAll(); isPlaying = false; isLive = false; title = ""; logo = ""; progress = 0f; timeStr = "00:00"; durationStr = "--:--" }
     fun release() { scope.cancel(); player1.release(); player2.release() }
 }

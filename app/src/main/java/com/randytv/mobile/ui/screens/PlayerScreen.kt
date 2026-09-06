@@ -1,7 +1,5 @@
 package com.randytv.mobile.ui.screens
 
-import android.content.Context
-import android.media.AudioManager
 import android.view.KeyEvent
 import android.view.SurfaceView
 import androidx.compose.foundation.background
@@ -35,13 +33,14 @@ import androidx.compose.ui.input.key.nativeKeyCode
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import android.view.SoundEffectConstants
+import androidx.compose.ui.platform.LocalView
 import com.randytv.mobile.player.PlayerController
 import com.randytv.mobile.ui.components.CachedImage
 import com.randytv.mobile.ui.components.FocusGreen
@@ -59,18 +58,9 @@ fun PlayerScreen(playerController: PlayerController, onClose: () -> Unit) {
     var inBarMode by remember { mutableStateOf(false) }
     var isBuffering by remember { mutableStateOf(true) }
     var bufferPercent by remember { mutableFloatStateOf(0f) }
-
-    // AudioManager para subir/bajar el volumen MULTIMEDIA con los botones del control remoto.
-    val context = LocalContext.current
-    val audioManager = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
-    fun changeVolume(up: Boolean) {
-        // FLAG_SHOW_UI muestra la barra de volumen del sistema al ajustar.
-        audioManager.adjustStreamVolume(
-            AudioManager.STREAM_MUSIC,
-            if (up) AudioManager.ADJUST_RAISE else AudioManager.ADJUST_LOWER,
-            AudioManager.FLAG_SHOW_UI
-        )
-    }
+    // El volumen (Volumen +/-/Mute) se maneja en MainActivity.dispatchKeyEvent, no aqui: durante la
+    // reproduccion el SurfaceView del video puede quedarse con el foco nativo y el onKeyEvent de
+    // Compose de esta pantalla nunca llega a recibir esas teclas. Ver MainActivity para el detalle.
 
     LaunchedEffect(playerController.isPlaying) { while (playerController.isPlaying && !playerController.isLive) { playerController.updateProgress(); delay(500) } }
     LaunchedEffect(Unit) { if (!playerController.isLive) { isBuffering = true; bufferPercent = 0f; var w = 0; while (playerController.activePlayer.playbackState != androidx.media3.common.Player.STATE_READY && w < 10000) { delay(100); w += 100; bufferPercent = (w / 10000f).coerceAtMost(0.95f) }; bufferPercent = 1f; delay(300); isBuffering = false } else isBuffering = false }
@@ -94,14 +84,6 @@ fun PlayerScreen(playerController: PlayerController, onClose: () -> Unit) {
                     KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_REWIND -> { if (!playerController.isLive) playerController.jumpBackward(15); showUI(); true }
                     KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { if (!playerController.isLive) playerController.jumpForward(30); showUI(); true }
                     KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> { if (!playerController.isLive) playerController.togglePause(); showUI(); true }
-                    KeyEvent.KEYCODE_VOLUME_UP -> { changeVolume(up = true); showUI(); true }
-                    KeyEvent.KEYCODE_VOLUME_DOWN -> { changeVolume(up = false); showUI(); true }
-                    KeyEvent.KEYCODE_VOLUME_MUTE -> {
-                        // ADJUST_TOGGLE_MUTE requiere API 23+; en versiones anteriores bajamos el volumen.
-                        val muteAdjust = if (android.os.Build.VERSION.SDK_INT >= 23) AudioManager.ADJUST_TOGGLE_MUTE else AudioManager.ADJUST_LOWER
-                        audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, muteAdjust, AudioManager.FLAG_SHOW_UI)
-                        showUI(); true
-                    }
                     KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE -> { onClose(); true }
                     else -> { showUI(); true }
                 }
@@ -150,13 +132,19 @@ fun PlayerScreen(playerController: PlayerController, onClose: () -> Unit) {
 @Composable
 private fun GreenBtn(icon: ImageVector, extraModifier: Modifier = Modifier, onClick: () -> Unit) {
     var isFocused by remember { mutableStateOf(false) }
+    val view = LocalView.current
     IconButton(
         onClick = onClick,
         modifier = extraModifier
             .size(if (isFocused) 54.dp else 40.dp)
             .background(if (isFocused) FocusGreen else Color(0x22FFFFFF), CircleShape)
             .then(if (isFocused) Modifier.border(3.dp, FocusGlow, CircleShape) else Modifier)
-            .onFocusChanged { isFocused = it.isFocused }
+            .onFocusChanged { state ->
+                // Sonido de "cursor" al mover el foco entre los botones de la barra del reproductor,
+                // igual que en el resto del menu (ver TVFocus.tvFocusable).
+                if (state.isFocused && !isFocused) view.playSoundEffect(SoundEffectConstants.NAVIGATION_DOWN)
+                isFocused = state.isFocused
+            }
             .scale(if (isFocused) 1.2f else 1f)
     ) {
         Icon(icon, null, tint = if (isFocused) Color.Black else Color.White, modifier = Modifier.size(if (isFocused) 26.dp else 18.dp))
