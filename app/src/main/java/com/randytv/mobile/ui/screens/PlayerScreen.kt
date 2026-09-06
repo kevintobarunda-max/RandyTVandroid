@@ -39,6 +39,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import android.view.SoundEffectConstants
+import androidx.compose.ui.platform.LocalView
 import com.randytv.mobile.player.PlayerController
 import com.randytv.mobile.ui.components.CachedImage
 import com.randytv.mobile.ui.components.FocusGreen
@@ -56,6 +58,9 @@ fun PlayerScreen(playerController: PlayerController, onClose: () -> Unit) {
     var inBarMode by remember { mutableStateOf(false) }
     var isBuffering by remember { mutableStateOf(true) }
     var bufferPercent by remember { mutableFloatStateOf(0f) }
+    // El volumen (Volumen +/-/Mute) se maneja en MainActivity.dispatchKeyEvent, no aqui: durante la
+    // reproduccion el SurfaceView del video puede quedarse con el foco nativo y el onKeyEvent de
+    // Compose de esta pantalla nunca llega a recibir esas teclas. Ver MainActivity para el detalle.
 
     LaunchedEffect(playerController.isPlaying) { while (playerController.isPlaying && !playerController.isLive) { playerController.updateProgress(); delay(500) } }
     LaunchedEffect(Unit) { if (!playerController.isLive) { isBuffering = true; bufferPercent = 0f; var w = 0; while (playerController.activePlayer.playbackState != androidx.media3.common.Player.STATE_READY && w < 10000) { delay(100); w += 100; bufferPercent = (w / 10000f).coerceAtMost(0.95f) }; bufferPercent = 1f; delay(300); isBuffering = false } else isBuffering = false }
@@ -127,13 +132,19 @@ fun PlayerScreen(playerController: PlayerController, onClose: () -> Unit) {
 @Composable
 private fun GreenBtn(icon: ImageVector, extraModifier: Modifier = Modifier, onClick: () -> Unit) {
     var isFocused by remember { mutableStateOf(false) }
+    val view = LocalView.current
     IconButton(
         onClick = onClick,
         modifier = extraModifier
             .size(if (isFocused) 54.dp else 40.dp)
             .background(if (isFocused) FocusGreen else Color(0x22FFFFFF), CircleShape)
             .then(if (isFocused) Modifier.border(3.dp, FocusGlow, CircleShape) else Modifier)
-            .onFocusChanged { isFocused = it.isFocused }
+            .onFocusChanged { state ->
+                // Sonido de "cursor" al mover el foco entre los botones de la barra del reproductor,
+                // igual que en el resto del menu (ver TVFocus.tvFocusable).
+                if (state.isFocused && !isFocused) view.playSoundEffect(SoundEffectConstants.NAVIGATION_DOWN)
+                isFocused = state.isFocused
+            }
             .scale(if (isFocused) 1.2f else 1f)
     ) {
         Icon(icon, null, tint = if (isFocused) Color.Black else Color.White, modifier = Modifier.size(if (isFocused) 26.dp else 18.dp))
