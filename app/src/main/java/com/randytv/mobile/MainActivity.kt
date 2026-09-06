@@ -36,6 +36,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         try { window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) } catch (_: Exception) {}
+        // Hace que los botones de volumen del control remoto ajusten el volumen MULTIMEDIA
+        // (música/video) en toda la app, y no el volumen de llamada u otro stream.
+        try { volumeControlStream = android.media.AudioManager.STREAM_MUSIC } catch (_: Exception) {}
         try { playerController = PlayerController(this) } catch (e: Exception) { errorMsg = e.message ?: "Error"; Log.e("RandyTV", "ERROR: $errorMsg", e) }
         try { repository.loadAll() } catch (_: Exception) {}
         setContent {
