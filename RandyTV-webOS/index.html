@@ -1,127 +1,977 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=1920">
-  <title>Randy TV</title>
-  <link rel="stylesheet" href="app.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1920">
+<title>Randy TV</title>
+<style>
+/* ═══ RESET ═══════════════════════════════════════════════════ */
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+html,body{width:1920px;height:1080px;overflow:hidden;background:#000;color:#fff;
+  font-family:Arial,Helvetica,sans-serif;font-size:16px;cursor:none;}
+
+/* ═══ SCREENS ══════════════════════════════════════════════════ */
+.screen{display:none;width:1920px;height:1080px;position:absolute;top:0;left:0;}
+.screen.active{display:flex;}
+
+/* ═══ FOCUS ════════════════════════════════════════════════════ */
+.focusable{outline:none;cursor:default;}
+.focusable.focused{
+  outline:3px solid #00FF88;
+  box-shadow:0 0 20px 4px rgba(0,255,136,0.6);
+  transform:scale(1.06);
+  z-index:20;
+  position:relative;
+}
+.focusable{transition:transform 0.1s ease,box-shadow 0.1s ease;}
+
+/* ═══ SPLASH ═══════════════════════════════════════════════════ */
+#screen-splash{
+  background:radial-gradient(ellipse at center, #0a1628 0%, #000 70%);
+  flex-direction:column;justify-content:center;align-items:center;gap:24px;
+}
+.sp-logo{font-size:80px;font-weight:900;color:#00E676;letter-spacing:8px;font-family:'Courier New',monospace;}
+.sp-sub{font-size:20px;font-weight:700;color:rgba(255,255,255,0.4);letter-spacing:6px;}
+.sp-ring{position:relative;width:130px;height:130px;margin-top:10px;}
+.sp-svg{width:130px;height:130px;transform:rotate(-90deg);}
+.sp-bg{fill:none;stroke:rgba(255,255,255,0.1);stroke-width:8;}
+.sp-fg{fill:none;stroke:#00FF88;stroke-width:8;stroke-linecap:round;
+  stroke-dasharray:301.59;stroke-dashoffset:301.59;
+  transition:stroke-dashoffset 0.3s linear;}
+.sp-pct{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  font-size:24px;font-weight:700;color:#fff;}
+.sp-msg{font-size:16px;color:rgba(255,255,255,0.35);}
+
+/* ═══ HOME ════════════════════════════════════════════════════ */
+#screen-home{
+  background:radial-gradient(ellipse at 30% 50%, #0d1f3c 0%, #060606 60%);
+  justify-content:center;align-items:center;
+}
+.home-inner{display:flex;align-items:center;gap:120px;width:1500px;}
+.home-brand{flex:1;display:flex;flex-direction:column;gap:8px;}
+.home-logo{font-size:90px;font-weight:900;color:#00E676;
+  font-family:'Courier New',monospace;letter-spacing:4px;
+  text-shadow:0 0 40px rgba(0,230,118,0.4);}
+.home-sub{font-size:22px;font-weight:700;color:rgba(255,255,255,0.35);letter-spacing:6px;}
+.home-menu{flex:1;display:flex;flex-direction:column;gap:20px;}
+.home-btn{
+  display:flex;align-items:center;gap:22px;
+  height:76px;padding:0 32px;
+  background:rgba(255,255,255,0.07);
+  border:1.5px solid rgba(255,255,255,0.1);
+  border-radius:14px;
+  font-size:24px;font-weight:600;color:rgba(255,255,255,0.9);
+  user-select:none;
+}
+.home-btn.focused{
+  background:rgba(0,230,118,0.12);
+  border-color:#00E676;
+  color:#fff;
+  box-shadow:0 0 24px rgba(0,230,118,0.3);
+}
+.home-btn-icon{font-size:30px;width:40px;text-align:center;}
+
+/* ═══ LIST ════════════════════════════════════════════════════ */
+#screen-list{flex-direction:column;background:#000;}
+.topbar{
+  display:flex;align-items:center;
+  height:64px;padding:0 24px;gap:16px;
+  background:#0f0f0f;flex-shrink:0;
+  border-bottom:1px solid rgba(255,255,255,0.06);
+}
+.topbar-home-btn{
+  font-size:22px;padding:8px 14px;border-radius:10px;
+  background:rgba(255,255,255,0.06);color:#fff;
+}
+.topbar-home-btn.focused{background:rgba(0,230,118,0.2);border:1px solid #00E676;}
+.topbar-title{font-size:18px;font-weight:900;color:#00E676;letter-spacing:3px;flex:1;}
+.search-box{
+  background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.15);
+  border-radius:10px;color:#fff;padding:8px 16px;font-size:15px;width:260px;outline:none;
+}
+.search-box:focus{border-color:#00E676;}
+
+.catbar{
+  display:flex;align-items:center;
+  height:50px;padding:0 20px;gap:8px;
+  background:#0a0a0a;flex-shrink:0;
+  overflow:hidden;
+}
+.cat-chip{
+  display:inline-flex;align-items:center;
+  padding:6px 18px;border-radius:24px;
+  font-size:13px;font-weight:600;
+  background:rgba(255,255,255,0.06);
+  border:1px solid rgba(255,255,255,0.1);
+  color:rgba(255,255,255,0.8);
+  white-space:nowrap;user-select:none;flex-shrink:0;
+}
+.cat-chip.sel{background:#00E676;color:#000;border-color:#00E676;}
+.cat-chip.focused:not(.sel){background:rgba(255,255,255,0.16);border-color:#00FF88;color:#fff;}
+
+.grid-wrap{flex:1;overflow:hidden;padding:16px 20px;}
+.grid{
+  display:grid;
+  grid-template-columns:repeat(7,1fr);
+  gap:18px 16px;
+}
+.grid.vod-grid{grid-template-columns:repeat(6,1fr);}
+
+.card{display:flex;flex-direction:column;align-items:center;gap:7px;user-select:none;}
+.card-img-wrap{
+  position:relative;overflow:hidden;
+  border-radius:10px;background:#1a1a1a;
+  border:1px solid rgba(255,255,255,0.07);
+  width:100%;
+}
+.card-img-wrap.sq{padding-top:100%;}
+.card-img-wrap.rect{padding-top:148%;}
+.card-img-wrap img{
+  position:absolute;top:0;left:0;width:100%;height:100%;
+  object-fit:contain;background:#111;
+}
+.card-img-wrap.rect img{object-fit:cover;}
+.card.focused .card-img-wrap{
+  outline:3px solid #00FF88;
+  box-shadow:0 0 20px 4px rgba(0,255,136,0.5);
+  transform:scale(1.1);
+}
+.card{transition:transform 0.1s;}
+.card-rating{
+  position:absolute;top:5px;right:5px;
+  background:#00E676;color:#000;
+  font-size:9px;font-weight:900;
+  padding:2px 5px;border-radius:3px;
+}
+.card-name{
+  font-size:11px;color:rgba(255,255,255,0.85);
+  text-align:center;width:100%;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+
+/* Estado vacío */
+.empty-msg{
+  grid-column:1/-1;text-align:center;
+  padding:60px 0;font-size:20px;color:rgba(255,255,255,0.25);
+}
+.loading-msg{
+  grid-column:1/-1;text-align:center;
+  padding:60px 0;font-size:20px;color:rgba(255,255,255,0.4);
+}
+
+/* ═══ PLAYER ══════════════════════════════════════════════════ */
+#screen-player{background:#000;position:relative;}
+#main-video{width:1920px;height:1080px;display:block;background:#000;}
+
+.pl-topbar{
+  position:absolute;top:0;left:0;right:0;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:16px 24px;
+  background:linear-gradient(to bottom,rgba(0,0,0,0.88),transparent);
+  opacity:0;transition:opacity 0.3s;
+}
+.pl-topbar.vis{opacity:1;}
+.pl-info{display:flex;align-items:center;gap:14px;}
+.pl-logo{width:44px;height:44px;object-fit:contain;border-radius:8px;background:#111;}
+.pl-title{font-size:18px;font-weight:700;color:#fff;max-width:600px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.pl-live{font-size:12px;color:#f55;font-weight:700;letter-spacing:1px;}
+.pl-close{
+  font-size:22px;padding:10px 16px;border-radius:50%;
+  background:rgba(0,0,0,0.55);color:#fff;
+}
+.pl-close.focused{background:#00E676;color:#000;}
+
+.pl-spinner{
+  display:none;position:absolute;top:50%;left:50%;
+  transform:translate(-50%,-50%);
+  flex-direction:column;align-items:center;justify-content:center;
+  width:100px;height:100px;
+}
+.pl-spinner.vis{display:flex;}
+.spin-ring{
+  width:76px;height:76px;border-radius:50%;
+  border:6px solid rgba(255,255,255,0.15);
+  border-top-color:#00FF88;
+  animation:spin 0.9s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg);}}
+.spin-pct{position:absolute;font-size:14px;font-weight:700;color:#fff;}
+
+.pl-bar{
+  position:absolute;bottom:0;left:0;right:0;
+  background:linear-gradient(to top,rgba(0,0,0,0.92),transparent);
+  padding:18px 28px 24px;
+  opacity:0;transition:opacity 0.3s;
+}
+.pl-bar.vis{opacity:1;}
+.prog-wrap{position:relative;height:8px;border-radius:4px;margin-bottom:10px;}
+.prog-bg{position:absolute;inset:0;background:rgba(255,255,255,0.18);border-radius:4px;}
+.prog-fill{position:absolute;top:0;left:0;height:100%;width:0%;background:#00E676;border-radius:4px;transition:width 0.5s linear;}
+.pl-times{display:flex;justify-content:space-between;font-size:12px;color:rgba(255,255,255,0.5);font-family:monospace;margin-bottom:12px;}
+.pl-btns{display:flex;gap:12px;align-items:center;}
+.pbtn{
+  padding:10px 22px;border-radius:10px;
+  background:rgba(255,255,255,0.12);
+  font-size:17px;font-weight:700;color:#fff;user-select:none;
+}
+.pbtn.focused{background:#00E676;color:#000;box-shadow:0 0 16px rgba(0,255,136,0.6);}
+.pl-hint{margin-top:10px;font-size:12px;color:rgba(255,255,255,0.28);}
+.pl-live-hint{
+  position:absolute;bottom:24px;left:50%;transform:translateX(-50%);
+  font-size:14px;color:rgba(255,255,255,0.3);
+  opacity:0;transition:opacity 0.3s;
+}
+.pl-live-hint.vis{opacity:1;}
+.pl-err{
+  display:none;position:absolute;top:50%;left:50%;
+  transform:translate(-50%,-50%);
+  flex-direction:column;align-items:center;gap:20px;
+  background:rgba(0,0,0,0.88);padding:36px 50px;border-radius:16px;
+  border:1px solid rgba(255,255,255,0.12);
+}
+.pl-err.vis{display:flex;}
+.pl-err-msg{font-size:18px;color:rgba(255,255,255,0.8);text-align:center;}
+
+/* ═══ SCROLLBAR OCULTO ════════════════════════════════════════ */
+::-webkit-scrollbar{display:none;}
+</style>
 </head>
 <body>
 
-  <!-- ═══════════════ SPLASH ═══════════════ -->
-  <div id="screen-splash" class="screen active">
-    <div class="splash-center">
-      <div class="splash-logo">RANDY TV</div>
-      <div class="splash-sub">STREAMING</div>
-      <div class="splash-ring">
-        <svg viewBox="0 0 100 100" class="splash-svg">
-          <circle cx="50" cy="50" r="44" class="ring-bg"/>
-          <circle cx="50" cy="50" r="44" class="ring-fg" id="splash-ring-fg"/>
-        </svg>
-        <div class="splash-pct" id="splash-pct">0%</div>
-      </div>
-      <div class="splash-msg" id="splash-msg">Cargando contenido...</div>
-    </div>
+<!-- ═══ SPLASH ═══════════════════════════════════════════════ -->
+<div id="screen-splash" class="screen active">
+  <div class="sp-logo">RANDY TV</div>
+  <div class="sp-sub">STREAMING</div>
+  <div class="sp-ring">
+    <svg viewBox="0 0 100 100" class="sp-svg">
+      <circle cx="50" cy="50" r="48" class="sp-bg"/>
+      <circle cx="50" cy="50" r="48" class="sp-fg" id="sp-fg"/>
+    </svg>
+    <div class="sp-pct" id="sp-pct">0%</div>
   </div>
+  <div class="sp-msg" id="sp-msg">Cargando contenido...</div>
+</div>
 
-  <!-- ═══════════════ HOME ═══════════════ -->
-  <div id="screen-home" class="screen">
-    <div class="home-wrap">
-      <div class="home-brand">
-        <div class="home-logo">RANDY TV</div>
-        <div class="home-sub">STREAMING</div>
+<!-- ═══ HOME ═════════════════════════════════════════════════ -->
+<div id="screen-home" class="screen">
+  <div class="home-inner">
+    <div class="home-brand">
+      <div class="home-logo">RANDY TV</div>
+      <div class="home-sub">STREAMING</div>
+    </div>
+    <div class="home-menu" id="home-menu">
+      <div class="home-btn focusable" id="btn-live">
+        <span class="home-btn-icon">TV</span>
+        <span>TV en Vivo</span>
       </div>
-      <div class="home-menu" id="home-menu">
-        <div class="home-btn focusable" data-action="live">
-          <span class="home-btn-icon">📺</span>
-          <span class="home-btn-label">TV en Vivo</span>
-        </div>
-        <div class="home-btn focusable" data-action="vod">
-          <span class="home-btn-icon">🎬</span>
-          <span class="home-btn-label">Películas</span>
-        </div>
-        <div class="home-btn focusable" data-action="series">
-          <span class="home-btn-icon">📀</span>
-          <span class="home-btn-label">Series</span>
-        </div>
-        <div class="home-btn focusable" data-action="simpsons">
-          <span class="home-btn-icon">⭐</span>
-          <span class="home-btn-label">Simpsons 24h</span>
-        </div>
+      <div class="home-btn focusable" id="btn-vod">
+        <span class="home-btn-icon">[]</span>
+        <span>Peliculas</span>
+      </div>
+      <div class="home-btn focusable" id="btn-series">
+        <span class="home-btn-icon">[]</span>
+        <span>Series</span>
+      </div>
+      <div class="home-btn focusable" id="btn-simp">
+        <span class="home-btn-icon">*</span>
+        <span>Simpsons 24h</span>
       </div>
     </div>
   </div>
+</div>
 
-  <!-- ═══════════════ LIVE / VOD / SERIES (pantalla de lista) ═══════════════ -->
-  <div id="screen-list" class="screen">
-    <div class="topbar">
-      <div class="topbar-home focusable" id="list-home-btn">🏠</div>
-      <div class="topbar-title" id="list-title">TV EN VIVO</div>
-      <div class="topbar-search">
-        <input type="text" id="search-input" class="search-input" placeholder="Buscar...">
-      </div>
-    </div>
-    <div class="catbar" id="catbar"></div>
-    <div class="grid-wrap">
-      <div class="grid" id="content-grid"></div>
-    </div>
+<!-- ═══ LIST ══════════════════════════════════════════════════ -->
+<div id="screen-list" class="screen">
+  <div class="topbar">
+    <div class="topbar-home-btn focusable" id="list-back">INICIO</div>
+    <div class="topbar-title" id="list-title">TV EN VIVO</div>
+    <input type="text" id="search-box" class="search-box" placeholder="Buscar...">
   </div>
-
-  <!-- ═══════════════ PLAYER ═══════════════ -->
-  <div id="screen-player" class="screen">
-    <video id="main-video" class="main-video" autoplay playsinline></video>
-    <!-- overlay de info (arriba) -->
-    <div class="player-topbar" id="player-topbar">
-      <div class="player-info">
-        <img id="player-logo" class="player-logo" src="" alt="">
-        <div class="player-info-text">
-          <div class="player-title" id="player-title"></div>
-          <div class="player-live-badge" id="player-live-badge">● EN VIVO</div>
-        </div>
-      </div>
-      <div class="player-close focusable" id="player-close">✕</div>
-    </div>
-    <!-- spinner buffering -->
-    <div class="player-spinner" id="player-spinner">
-      <div class="spinner-ring"></div>
-      <div class="spinner-pct" id="spinner-pct">0%</div>
-    </div>
-    <!-- barra inferior VOD -->
-    <div class="player-bar" id="player-bar">
-      <div class="progress-wrap" id="progress-wrap">
-        <div class="progress-bg"></div>
-        <div class="progress-fill" id="progress-fill"></div>
-      </div>
-      <div class="player-times">
-        <span id="time-current">00:00</span>
-        <span id="time-total">--:--</span>
-      </div>
-      <div class="player-btns" id="player-btns">
-        <div class="pbtn focusable" id="pbtn-rew"  data-action="rew">⏪ 15s</div>
-        <div class="pbtn focusable" id="pbtn-play" data-action="play">⏸</div>
-        <div class="pbtn focusable" id="pbtn-fwd"  data-action="fwd">⏩ 30s</div>
-      </div>
-      <div class="player-hint" id="player-hint"></div>
-    </div>
-    <!-- hint canales vivo -->
-    <div class="player-live-hint" id="player-live-hint">▲▼ Canal  |  ← Salir</div>
-    <!-- error overlay -->
-    <div class="player-error" id="player-error">
-      <div class="player-error-msg" id="player-error-msg"></div>
-      <div class="pbtn focusable" id="player-retry-btn" data-action="retry">↺ Reintentar</div>
-    </div>
+  <div class="catbar" id="catbar"></div>
+  <div class="grid-wrap">
+    <div class="grid" id="main-grid"></div>
   </div>
+</div>
 
-  <!-- ═══════════════ SCRIPTS ═══════════════ -->
-  <!-- hls.js v0.12 ES5 — compatible Chromium 53 -->
-  <script src="hls.min.js"></script>
-  <script src="api.js"></script>
-  <script src="nav.js"></script>
-  <script src="splash.js"></script>
-  <script src="home.js"></script>
-  <script src="live.js"></script>
-  <script src="vod.js"></script>
-  <script src="player.js"></script>
-  <script src="app.js"></script>
+<!-- ═══ PLAYER ════════════════════════════════════════════════ -->
+<div id="screen-player" class="screen">
+  <video id="main-video" autoplay playsinline webkit-playsinline></video>
+  <div class="pl-topbar" id="pl-topbar">
+    <div class="pl-info">
+      <img id="pl-logo" class="pl-logo" src="" alt="">
+      <div>
+        <div class="pl-title" id="pl-title"></div>
+        <div class="pl-live" id="pl-live">● EN VIVO</div>
+      </div>
+    </div>
+    <div class="pl-close focusable" id="pl-close">X</div>
+  </div>
+  <div class="pl-spinner" id="pl-spinner">
+    <div class="spin-ring"></div>
+    <div class="spin-pct" id="spin-pct">0%</div>
+  </div>
+  <div class="pl-bar" id="pl-bar">
+    <div class="prog-wrap">
+      <div class="prog-bg"></div>
+      <div class="prog-fill" id="prog-fill"></div>
+    </div>
+    <div class="pl-times">
+      <span id="t-cur">00:00</span>
+      <span id="t-tot">--:--</span>
+    </div>
+    <div class="pl-btns">
+      <div class="pbtn focusable" id="pbtn-rew">REW 15s</div>
+      <div class="pbtn focusable" id="pbtn-play">PAUSA</div>
+      <div class="pbtn focusable" id="pbtn-fwd">FWD 30s</div>
+    </div>
+    <div class="pl-hint" id="pl-hint"></div>
+  </div>
+  <div class="pl-live-hint" id="pl-live-hint">Arriba/Abajo = Canal | Atras = Salir</div>
+  <div class="pl-err" id="pl-err">
+    <div class="pl-err-msg" id="pl-err-msg">Sin señal</div>
+    <div class="pbtn focusable" id="pl-retry">Reintentar</div>
+  </div>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════
+   RANDY TV — webOS 4 / Chromium 53
+   App monolítica: todo en un archivo, ES5 puro, sin dependencias CDN
+═══════════════════════════════════════════════════════════════ */
+(function(){
+'use strict';
+
+/* ── CONFIGURACION ─────────────────────────────────────────── */
+var SERVER   = 'http://tv.streamid.tv:8080';
+var USER     = 'cristobalignacio6834';
+var PASS     = 'Ajud4CU6dH3Q';
+var ADULT    = ['xxx','adult','porn','erotic','playboy','hustle','penthouse','brazzers','18+','sexy','venus','desnud','vivid'];
+
+/* ── ESTADO GLOBAL ─────────────────────────────────────────── */
+var state = {
+  screen:      'splash',
+  prevScreen:  'home',
+  listMode:    'live',     /* live | vod | simpsons */
+  selCat:      '2mb',
+  liveCategories:  [],
+  vodCategories:   [],
+  liveStreams:     [],
+  vodStreams:      [],
+  loadStep:        0,
+  liveDone:        false,
+  channels:        [],     /* lista para zapping */
+  chanIdx:         0,
+  isLive:          false,
+  focused:         null
+};
+
+/* ── HELPERS ───────────────────────────────────────────────── */
+function isAdult(name){
+  var l = name.toLowerCase();
+  for(var i=0;i<ADULT.length;i++) if(l.indexOf(ADULT[i])!==-1) return true;
+  return false;
+}
+function is2MB(s){
+  var l=s.name.toLowerCase();
+  return l.indexOf('2mb')!==-1||l.indexOf('| 2')!==-1||l.indexOf('|2')!==-1||l.indexOf('sd|')!==-1||l.indexOf('|sd')!==-1;
+}
+function is24h(s){
+  var l=s.name.toLowerCase();
+  return l.indexOf('24h')!==-1||l.indexOf('24/7')!==-1||l.indexOf('24 h')!==-1;
+}
+function isSimp(s){ return s.name.toLowerCase().indexOf('simpson')!==-1; }
+function getImg(s){ return s.stream_icon||s.cover||''; }
+function getRating(s){
+  var r=parseFloat(s.rating); if(!isNaN(r)&&r>0) return r;
+  r=parseFloat(s.rating_5based); if(!isNaN(r)&&r>0) return r*2;
+  return null;
+}
+function apiUrl(action){ return SERVER+'/player_api.php?username='+USER+'&password='+PASS+'&action='+action; }
+function liveUrl(id){    return SERVER+'/live/'+USER+'/'+PASS+'/'+id+'.m3u8'; }
+function vodUrl(id,ext){ return SERVER+'/movie/'+USER+'/'+PASS+'/'+id+'.'+(ext||'mp4'); }
+function fmt(ms){
+  var s=Math.floor(ms/1000)||0, m=Math.floor(s/60); s=s%60;
+  return (m<10?'0':'')+m+':'+(s<10?'0':'')+s;
+}
+
+/* ── FETCH JSON ────────────────────────────────────────────── */
+function fetchJSON(url, cb){
+  var xhr=new XMLHttpRequest();
+  xhr.open('GET',url,true);
+  xhr.timeout=20000;
+  xhr.onreadystatechange=function(){
+    if(xhr.readyState!==4) return;
+    if(xhr.status>=200&&xhr.status<300){
+      try{ cb(null,JSON.parse(xhr.responseText)); }
+      catch(e){ cb('parse:'+e.message,null); }
+    } else { cb('http:'+xhr.status,null); }
+  };
+  xhr.ontimeout=function(){ cb('timeout',null); };
+  xhr.onerror=function(){ cb('error',null); };
+  xhr.send();
+}
+
+/* ── CARGA DE DATOS ────────────────────────────────────────── */
+function loadAll(){
+  var done=0;
+  function tick(){
+    done++;
+    setSplash(done/4);
+    if(done===2 && !state.liveDone){
+      state.liveDone=true;
+      setSplashMsg('TV lista! Cargando peliculas...');
+      setTimeout(function(){ showScreen('home'); }, 500);
+    }
+    if(done===4 && state.screen==='splash'){
+      showScreen('home');
+    }
+  }
+  fetchJSON(apiUrl('get_live_categories'),function(e,d){
+    if(!e&&Array.isArray(d)) state.liveCategories=d.filter(function(c){ return !isAdult(c.category_name||''); });
+    tick();
+  });
+  fetchJSON(apiUrl('get_live_streams'),function(e,d){
+    if(!e&&Array.isArray(d)) state.liveStreams=d;
+    tick();
+  });
+  fetchJSON(apiUrl('get_vod_categories'),function(e,d){
+    if(!e&&Array.isArray(d)) state.vodCategories=d.filter(function(c){ return !isAdult(c.category_name||''); });
+    tick();
+  });
+  fetchJSON(apiUrl('get_vod_streams'),function(e,d){
+    if(!e&&Array.isArray(d)) state.vodStreams=d;
+    tick();
+  });
+  /* safety timeout 12s */
+  setTimeout(function(){
+    if(state.screen==='splash') showScreen('home');
+  },12000);
+}
+
+/* ── SPLASH ────────────────────────────────────────────────── */
+var CIRC=2*Math.PI*48; /* r=48 */
+function setSplash(p){
+  p=Math.min(1,Math.max(0,p));
+  var el=document.getElementById('sp-fg');
+  var pct=document.getElementById('sp-pct');
+  if(el) el.style.strokeDashoffset=CIRC*(1-p);
+  if(pct) pct.textContent=Math.round(p*100)+'%';
+}
+function setSplashMsg(t){
+  var el=document.getElementById('sp-msg');
+  if(el) el.textContent=t;
+}
+
+/* ═══ NAVEGACION ═══════════════════════════════════════════════
+   Motor de foco espacial por control remoto
+══════════════════════════════════════════════════════════════ */
+var nav={
+  scope: null,
+  focused: null,
+  onBack: null,
+
+  setScope: function(el, backCb){
+    this.scope=el;
+    this.onBack=backCb||null;
+  },
+  focus: function(el){
+    if(!el) return;
+    if(this.focused && this.focused!==el) this.focused.classList.remove('focused');
+    this.focused=el;
+    el.classList.add('focused');
+    try{ el.scrollIntoView({block:'nearest',inline:'nearest'}); }catch(e){}
+  },
+  clearFocus: function(){
+    if(this.focused){ this.focused.classList.remove('focused'); this.focused=null; }
+  },
+  focusFirst: function(){
+    var c=this.scope||document.body;
+    var els=c.querySelectorAll('.focusable');
+    if(els.length) this.focus(els[0]);
+  },
+  getFocusables: function(){
+    var c=this.scope||document.body;
+    var nl=c.querySelectorAll('.focusable');
+    var arr=[];
+    for(var i=0;i<nl.length;i++) arr.push(nl[i]);
+    return arr;
+  },
+  navigate: function(dir){
+    var cur=this.focused;
+    if(!cur){ this.focusFirst(); return; }
+    var all=this.getFocusables();
+    if(!all.length) return;
+    var cr=cur.getBoundingClientRect();
+    var cx=cr.left+cr.width/2, cy=cr.top+cr.height/2;
+    var best=null, bestScore=Infinity;
+    for(var i=0;i<all.length;i++){
+      var el=all[i];
+      if(el===cur) continue;
+      var r=el.getBoundingClientRect();
+      var ex=r.left+r.width/2, ey=r.top+r.height/2;
+      var dx=ex-cx, dy=ey-cy;
+      var ok=false;
+      if(dir==='up'    && dy<-4) ok=true;
+      if(dir==='down'  && dy> 4) ok=true;
+      if(dir==='left'  && dx<-4) ok=true;
+      if(dir==='right' && dx> 4) ok=true;
+      if(!ok) continue;
+      var pri,perp;
+      if(dir==='up'||dir==='down'){ pri=Math.abs(dy); perp=Math.abs(dx); }
+      else                        { pri=Math.abs(dx); perp=Math.abs(dy); }
+      var score=pri+perp*2;
+      if(score<bestScore){ bestScore=score; best=el; }
+    }
+    if(best) this.focus(best);
+  },
+  onKey: function(e){
+    var k=e.keyCode;
+    /* no interceptar mientras escriben en input */
+    if(document.activeElement&&document.activeElement.tagName==='INPUT'){
+      if(k===27||k===461){ document.activeElement.blur(); e.preventDefault(); }
+      return;
+    }
+    switch(k){
+      case 38: e.preventDefault(); nav.navigate('up');    break;
+      case 40: e.preventDefault(); nav.navigate('down');  break;
+      case 37: e.preventDefault(); nav.navigate('left');  break;
+      case 39: e.preventDefault(); nav.navigate('right'); break;
+      case 13: case 32:
+        e.preventDefault();
+        if(nav.focused) nav.focused.click();
+        break;
+      case 461: case 8: case 27:
+        e.preventDefault();
+        if(nav.onBack) nav.onBack();
+        break;
+    }
+  }
+};
+window.addEventListener('keydown',function(e){ nav.onKey(e); });
+/* webOS Back button via history */
+try{ history.pushState({rtv:1},''); }catch(ex){}
+window.addEventListener('popstate',function(){
+  if(nav.onBack) nav.onBack();
+  try{ history.pushState({rtv:1},''); }catch(ex){}
+});
+
+/* ═══ PANTALLAS ════════════════════════════════════════════════ */
+function showScreen(name){
+  var screens=['splash','home','list','player'];
+  for(var i=0;i<screens.length;i++){
+    var el=document.getElementById('screen-'+screens[i]);
+    if(el) el.classList[screens[i]===name?'add':'remove']('active');
+  }
+  state.screen=name;
+}
+
+/* ═══ HOME ═════════════════════════════════════════════════════ */
+function showHome(){
+  showScreen('home');
+  nav.setScope(document.getElementById('screen-home'), null);
+  nav.clearFocus();
+  setTimeout(function(){ nav.focusFirst(); },60);
+}
+
+document.getElementById('btn-live').addEventListener('click',function(){ showList('live'); });
+document.getElementById('btn-vod').addEventListener('click', function(){ showList('vod');  });
+document.getElementById('btn-series').addEventListener('click',function(){ showList('vod'); });
+document.getElementById('btn-simp').addEventListener('click', function(){ showList('simpsons'); });
+document.getElementById('list-back').addEventListener('click', function(){ showHome(); });
+
+/* ═══ LIST ═════════════════════════════════════════════════════ */
+var searchTimeout=null;
+document.getElementById('search-box').addEventListener('input',function(){
+  clearTimeout(searchTimeout);
+  searchTimeout=setTimeout(function(){ renderGrid(); },300);
+});
+
+function showList(mode){
+  state.listMode=mode;
+  state.prevScreen='list:'+mode;
+  showScreen('list');
+
+  var title=document.getElementById('list-title');
+  if(mode==='simpsons'){ title.textContent='SIMPSONS 24H'; title.style.color='#FFD700'; }
+  else if(mode==='vod'){ title.textContent='PELICULAS';    title.style.color='#00E676'; }
+  else                 { title.textContent='TV EN VIVO';   title.style.color='#00E676'; }
+
+  /* cat default */
+  if(mode==='live'||mode==='simpsons') state.selCat='2mb';
+  else{
+    var cats=state.vodCategories;
+    state.selCat=cats.length?cats[0].category_id:'';
+  }
+
+  document.getElementById('search-box').value='';
+  renderCatbar();
+  renderGrid();
+
+  nav.setScope(document.getElementById('screen-list'),function(){ showHome(); });
+  setTimeout(function(){
+    var first=document.getElementById('main-grid').querySelector('.focusable');
+    if(first) nav.focus(first);
+    else nav.focus(document.getElementById('list-back'));
+  },80);
+}
+
+function renderCatbar(){
+  var bar=document.getElementById('catbar');
+  bar.innerHTML='';
+  if(state.listMode==='simpsons'||state.listMode==='vod') {
+    var cats=state.listMode==='vod'?state.vodCategories:[];
+    for(var i=0;i<cats.length&&i<14;i++){
+      (function(cat){
+        var chip=document.createElement('div');
+        chip.className='cat-chip focusable'+(cat.category_id===state.selCat?' sel':'');
+        chip.textContent=cat.category_name;
+        chip.addEventListener('click',function(){
+          state.selCat=cat.category_id;
+          renderCatbar(); renderGrid();
+          setTimeout(function(){
+            var f=document.getElementById('main-grid').querySelector('.focusable');
+            if(f) nav.focus(f);
+          },50);
+        });
+        bar.appendChild(chip);
+      })(cats[i]);
+    }
+    return;
+  }
+  /* live: chips fijos + categorias */
+  var fixed=[{id:'2mb',name:'2MB'},{id:'24h',name:'24 Horas'}];
+  var all=fixed.concat(state.liveCategories.slice(0,12));
+  for(var j=0;j<all.length;j++){
+    (function(cat){
+      var chip=document.createElement('div');
+      chip.className='cat-chip focusable'+(cat.id===state.selCat?' sel':'');
+      chip.textContent=cat.name||cat.category_name;
+      chip.addEventListener('click',function(){
+        state.selCat=cat.id||cat.category_id;
+        renderCatbar(); renderGrid();
+        setTimeout(function(){
+          var f=document.getElementById('main-grid').querySelector('.focusable');
+          if(f) nav.focus(f);
+        },50);
+      });
+      bar.appendChild(chip);
+    })(all[j]);
+  }
+}
+
+function renderGrid(){
+  var grid=document.getElementById('main-grid');
+  grid.innerHTML='';
+  var mode=state.listMode;
+  var q=(document.getElementById('search-box').value||'').toLowerCase().trim();
+
+  /* ── Construir lista ── */
+  var list=[];
+  if(mode==='simpsons'){
+    list=state.liveStreams.filter(function(s){ return !isAdult(s.name)&&isSimp(s); });
+    grid.className='grid';
+  } else if(mode==='live'){
+    if(state.selCat==='2mb')      list=state.liveStreams.filter(function(s){ return !isAdult(s.name)&&is2MB(s); }).sort(function(a,b){ return a.name.localeCompare(b.name); });
+    else if(state.selCat==='24h') list=state.liveStreams.filter(function(s){ return !isAdult(s.name)&&is24h(s); }).sort(function(a,b){ return a.name.localeCompare(b.name); });
+    else                          list=state.liveStreams.filter(function(s){ return s.category_id===state.selCat&&!isAdult(s.name); });
+    grid.className='grid';
+  } else {
+    list=state.vodStreams.filter(function(s){ return !isAdult(s.name)&&(!state.selCat||s.category_id===state.selCat); });
+    list.sort(function(a,b){ return (getRating(b)||0)-(getRating(a)||0); });
+    list=list.slice(0,120);
+    grid.className='grid vod-grid';
+  }
+
+  if(q) list=list.filter(function(s){ return s.name.toLowerCase().indexOf(q)!==-1; });
+  list=list.slice(0,150);
+
+  /* ── Mostrar loading si listas vacías pero no cargadas aún ── */
+  if(list.length===0){
+    var msg=document.createElement('div');
+    msg.className= state.liveDone?'empty-msg':'loading-msg';
+    msg.textContent= state.liveDone?'Sin resultados':'Cargando...';
+    grid.appendChild(msg);
+    return;
+  }
+
+  var channelSnap=list.slice(); /* snapshot para zapping */
+
+  for(var i=0;i<list.length;i++){
+    (function(stream,snap){
+      var isLiveItem=(mode==='live'||mode==='simpsons');
+      var card=document.createElement('div');
+      card.className='card focusable';
+
+      var wrap=document.createElement('div');
+      wrap.className='card-img-wrap '+(isLiveItem?'sq':'rect');
+
+      var img=document.createElement('img');
+      img.alt=stream.name;
+      var src=getImg(stream);
+      if(src) img.src=src;
+      img.onerror=function(){ this.style.display='none'; };
+      wrap.appendChild(img);
+
+      var rat=!isLiveItem?getRating(stream):null;
+      if(rat&&rat>0){
+        var badge=document.createElement('div');
+        badge.className='card-rating';
+        badge.textContent=rat.toFixed(1);
+        wrap.appendChild(badge);
+      }
+      card.appendChild(wrap);
+
+      var name=document.createElement('div');
+      name.className='card-name';
+      name.textContent=stream.name;
+      card.appendChild(name);
+
+      card.addEventListener('click',function(){
+        if(isLiveItem){
+          var idx=snap.indexOf(stream);
+          playLive(stream,snap,idx>=0?idx:0);
+        } else {
+          playVod(stream);
+        }
+      });
+      grid.appendChild(card);
+    })(list[i],channelSnap);
+  }
+}
+
+/* ═══ PLAYER ═══════════════════════════════════════════════════ */
+var video=document.getElementById('main-video');
+var plHls=null;
+var uiTimer=null, retryTimer=null, retryCount=0, progressTimer=null;
+var plVisible=false;
+
+/* Inicializar hls.js si está disponible */
+function makeHls(){
+  if(typeof Hls!=='undefined'&&Hls.isSupported()){
+    if(plHls){ try{plHls.destroy();}catch(e){} }
+    plHls=new Hls({
+      enableWorker:false,
+      maxBufferLength:30,
+      maxMaxBufferLength:60,
+      liveSyncDurationCount:3,
+      manifestLoadingTimeOut:15000,
+      manifestLoadingMaxRetry:4,
+      fragLoadingTimeOut:25000,
+      fragLoadingMaxRetry:4,
+      debug:false
+    });
+    return true;
+  }
+  return false;
+}
+
+function playLive(stream, channelList, idx){
+  state.isLive=true;
+  state.channels=channelList||[stream];
+  state.chanIdx=idx||0;
+  setPlInfo(stream.name, stream.stream_icon||'', true);
+  loadStream(liveUrl(stream.stream_id));
+  showScreen('player');
+  nav.setScope(document.getElementById('screen-player'), function(){ stopPlayer(); showHome(); });
+  showUI(5000);
+}
+
+function playVod(stream){
+  state.isLive=false;
+  state.channels=[];
+  setPlInfo(stream.name, stream.stream_icon||stream.cover||'', false);
+  loadVodDirect(vodUrl(stream.stream_id, stream.container_extension||'mp4'));
+  showScreen('player');
+  nav.setScope(document.getElementById('screen-player'), function(){ stopPlayer(); showHome(); });
+  showUI(5000);
+}
+
+function loadStream(url){
+  hideErr();
+  showSpinner();
+  retryCount=0;
+  video.pause();
+  video.src='';
+
+  var hlsOk=makeHls();
+  if(hlsOk){
+    plHls.loadSource(url);
+    plHls.attachMedia(video);
+    plHls.once(Hls.Events.MANIFEST_PARSED,function(){
+      video.play(); hideSpinner();
+    });
+    plHls.on(Hls.Events.ERROR,function(ev,data){
+      if(data.fatal){ showErr('Sin señal. Reintentando...'); retryAuto(url); }
+    });
+  } else {
+    /* Fallback directo (algunos TV soportan HLS nativo) */
+    video.src=url;
+    video.load();
+    video.play();
+  }
+}
+
+function loadVodDirect(url){
+  hideErr();
+  showSpinner();
+  if(plHls){ try{plHls.destroy(); plHls=null;}catch(e){} }
+  video.src=url;
+  video.load();
+  var p=video.play();
+  if(p&&p.catch) p.catch(function(){});
+}
+
+function zapNext(){
+  if(!state.channels.length) return;
+  state.chanIdx=(state.chanIdx+1)%state.channels.length;
+  var ch=state.channels[state.chanIdx];
+  setPlInfo(ch.name,ch.stream_icon||'',true);
+  loadStream(liveUrl(ch.stream_id));
+  showUI(3000);
+}
+function zapPrev(){
+  if(!state.channels.length) return;
+  state.chanIdx=(state.chanIdx-1+state.channels.length)%state.channels.length;
+  var ch=state.channels[state.chanIdx];
+  setPlInfo(ch.name,ch.stream_icon||'',true);
+  loadStream(liveUrl(ch.stream_id));
+  showUI(3000);
+}
+
+function setPlInfo(title, logo, isLive){
+  document.getElementById('pl-title').textContent=title;
+  var logoEl=document.getElementById('pl-logo');
+  if(logo){ logoEl.src=logo; logoEl.style.display=''; }
+  else logoEl.style.display='none';
+  document.getElementById('pl-live').style.display=isLive?'':'none';
+  document.getElementById('pl-hint').textContent=isLive?'':'Izq:REW | Der:FWD | OK:Pausa | Atras:Salir';
+}
+
+function stopPlayer(){
+  clearTimeout(uiTimer); clearTimeout(retryTimer); clearInterval(progressTimer);
+  video.pause(); video.src='';
+  if(plHls){ try{plHls.destroy(); plHls=null;}catch(e){} }
+  hideUI(); hideSpinner(); hideErr();
+  document.getElementById('prog-fill').style.width='0%';
+  document.getElementById('t-cur').textContent='00:00';
+  document.getElementById('t-tot').textContent='--:--';
+}
+
+function retryAuto(url){
+  retryCount++;
+  if(retryCount>5){ showErr('Sin señal. Presiona OK para reintentar.'); return; }
+  clearTimeout(retryTimer);
+  retryTimer=setTimeout(function(){ loadStream(url); }, 3000*retryCount);
+}
+
+/* UI visibility */
+function showUI(dur){
+  plVisible=true;
+  document.getElementById('pl-topbar').classList.add('vis');
+  if(state.isLive){
+    document.getElementById('pl-live-hint').classList.add('vis');
+    document.getElementById('pl-bar').classList.remove('vis');
+  } else {
+    document.getElementById('pl-bar').classList.add('vis');
+    document.getElementById('pl-live-hint').classList.remove('vis');
+  }
+  clearTimeout(uiTimer);
+  uiTimer=setTimeout(hideUI, dur||4000);
+}
+function hideUI(){
+  plVisible=false;
+  document.getElementById('pl-topbar').classList.remove('vis');
+  document.getElementById('pl-bar').classList.remove('vis');
+  document.getElementById('pl-live-hint').classList.remove('vis');
+}
+
+/* Spinner */
+var spinVal=0;
+function showSpinner(){
+  spinVal=0;
+  document.getElementById('pl-spinner').classList.add('vis');
+  clearInterval(progressTimer);
+  progressTimer=setInterval(function(){
+    spinVal=Math.min(95,spinVal+4);
+    document.getElementById('spin-pct').textContent=spinVal+'%';
+  },200);
+}
+function hideSpinner(){
+  clearInterval(progressTimer);
+  document.getElementById('spin-pct').textContent='100%';
+  setTimeout(function(){ document.getElementById('pl-spinner').classList.remove('vis'); },200);
+}
+
+/* Error */
+function showErr(msg){
+  document.getElementById('pl-err-msg').textContent=msg;
+  document.getElementById('pl-err').classList.add('vis');
+  setTimeout(function(){ nav.focus(document.getElementById('pl-retry')); },60);
+}
+function hideErr(){ document.getElementById('pl-err').classList.remove('vis'); }
+
+/* Eventos video */
+video.addEventListener('playing',  function(){ hideSpinner(); });
+video.addEventListener('waiting',  function(){ if(state.isLive) showSpinner(); });
+video.addEventListener('stalled',  function(){ if(state.isLive) showSpinner(); });
+video.addEventListener('timeupdate',function(){
+  if(state.isLive) return;
+  var d=video.duration, c=video.currentTime;
+  if(d&&isFinite(d)&&d>0){
+    document.getElementById('prog-fill').style.width=((c/d)*100)+'%';
+    document.getElementById('t-cur').textContent=fmt(c*1000);
+    document.getElementById('t-tot').textContent=fmt(d*1000);
+  }
+});
+
+/* Botones player */
+document.getElementById('pl-close').addEventListener('click',function(){ stopPlayer(); showHome(); });
+document.getElementById('pl-retry').addEventListener('click',function(){
+  hideErr();
+  if(state.channels.length) loadStream(liveUrl(state.channels[state.chanIdx].stream_id));
+  else loadVodDirect(video.src);
+});
+document.getElementById('pbtn-rew').addEventListener('click',function(){
+  video.currentTime=Math.max(0,video.currentTime-15);
+  showUI();
+});
+document.getElementById('pbtn-play').addEventListener('click',function(){
+  if(video.paused){ video.play(); document.getElementById('pbtn-play').textContent='PAUSA'; }
+  else            { video.pause(); document.getElementById('pbtn-play').textContent='PLAY';  }
+  showUI();
+});
+document.getElementById('pbtn-fwd').addEventListener('click',function(){
+  video.currentTime=Math.min(video.duration||0,video.currentTime+30);
+  showUI();
+});
+
+/* Teclas en el player — sobreescribir nav para arriba/abajo en vivo */
+window.addEventListener('keydown',function(e){
+  if(state.screen!=='player') return;
+  var k=e.keyCode;
+  if(k===38){ e.preventDefault(); if(state.isLive) zapNext(); else showUI(); }
+  else if(k===40){ e.preventDefault(); if(state.isLive) zapPrev(); else showUI(); }
+  else if(k===37){ e.preventDefault(); if(!state.isLive){ video.currentTime=Math.max(0,video.currentTime-15); showUI(); } }
+  else if(k===39){ e.preventDefault(); if(!state.isLive){ video.currentTime=Math.min(video.duration||0,video.currentTime+30); showUI(); } }
+  else if(k===13||k===32){ e.preventDefault(); if(!plVisible) showUI(); else if(!state.isLive){ if(video.paused) video.play(); else video.pause(); showUI(); } }
+  else if(k===461||k===8||k===27){ e.preventDefault(); stopPlayer(); showHome(); }
+  else showUI();
+},true); /* capture=true para interceptar antes del nav general */
+
+/* ═══ ARRANQUE ══════════════════════════════════════════════════ */
+try{
+  setSplash(0);
+  setSplashMsg('Conectando al servidor...');
+  loadAll();
+} catch(err){
+  document.body.style.cssText='background:#000;color:#ff0;font-size:22px;padding:40px;';
+  document.body.innerHTML='<h1 style="color:#f44">ERROR</h1><pre>'+err.message+'</pre>';
+}
+
+})(); /* fin IIFE */
+</script>
+
+<!-- hls.js cargado al final para que no bloquee el render -->
+<script src="hls.min.js"></script>
 </body>
 </html>
