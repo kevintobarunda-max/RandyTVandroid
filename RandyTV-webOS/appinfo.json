@@ -1,6 +1,6 @@
 {
   "id": "com.randytv.webos",
-  "version": "3.0.0",
+  "version": "4.0.0",
   "vendor": "RandyTV",
   "type": "web",
   "main": "index.html",
