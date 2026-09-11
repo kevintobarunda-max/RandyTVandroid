@@ -11,12 +11,20 @@ var API = (function () {
   var PASSWORD = 'Ajud4CU6dH3Q';
   var TMDB_KEY = 'eb55a71c3a8f3526e1a448ba8b77bc30';
 
+  /* ── Proxy CORS local (Mac en misma red) ──────────────────────
+     El proxy corre en tu Mac: npm install -g local-cors-proxy
+     lcp --proxyUrl http://tv.streamid.tv:8080 --port 8010
+     Cambia PROXY_IP por la IP de tu Mac (ej: 172.20.10.14)
+  ─────────────────────────────────────────────────────────────── */
+  var PROXY = 'http://172.20.10.14:8010';
+
   /* ── URLs ─────────────────────────────────────────────────── */
   function apiUrl(action) {
-    return SERVER + '/player_api.php?username=' + USERNAME +
+    return PROXY + '/player_api.php?username=' + USERNAME +
            '&password=' + PASSWORD + '&action=' + action;
   }
   function liveUrl(streamId) {
+    /* Streams de video van directo al servidor (no pasan por proxy) */
     return SERVER + '/live/' + USERNAME + '/' + PASSWORD + '/' + streamId + '.m3u8';
   }
   function vodUrl(streamId, ext) {
