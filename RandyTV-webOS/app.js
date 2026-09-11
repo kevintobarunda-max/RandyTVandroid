@@ -136,10 +136,18 @@
 
   /* ── Boot ────────────────────────────────────────────────── */
   function boot() {
-    wireAll();
-    showScreen('splash');
-    SPLASH.setProgress(0);
-    startLoad();
+    try {
+      wireAll();
+      showScreen('splash');
+      SPLASH.setProgress(0);
+      startLoad();
+    } catch(e) {
+      document.body.style.background = '#000';
+      document.body.style.color = '#fff';
+      document.body.style.fontSize = '24px';
+      document.body.style.padding = '40px';
+      document.body.innerHTML = '<h1 style="color:#f44">ERROR AL ARRANCAR</h1><pre style="color:#ff0;font-size:18px;white-space:pre-wrap">' + e.message + '\n' + e.stack + '</pre>';
+    }
   }
 
   /* Arrancar cuando el DOM esté listo */
