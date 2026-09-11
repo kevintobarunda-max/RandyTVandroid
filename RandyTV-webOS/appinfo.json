@@ -1,0 +1,16 @@
+{
+  "id": "com.randytv.webos",
+  "version": "1.0.0",
+  "vendor": "RandyTV",
+  "type": "web",
+  "main": "index.html",
+  "title": "Randy TV",
+  "icon": "img/icon80.png",
+  "largeIcon": "img/icon130.png",
+  "bgColor": "#000000",
+  "iconColor": "#00E676",
+  "splashBackground": "#000000",
+  "disableBackHistoryAPI": false,
+  "handlesRelaunch": false,
+  "resolution": "1920x1080"
+}

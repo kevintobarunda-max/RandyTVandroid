@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=1920">
+  <title>Randy TV</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+  <!-- ═══════════════ SPLASH ═══════════════ -->
+  <div id="screen-splash" class="screen active">
+    <div class="splash-center">
+      <div class="splash-logo">RANDY TV</div>
+      <div class="splash-sub">STREAMING</div>
+      <div class="splash-ring">
+        <svg viewBox="0 0 100 100" class="splash-svg">
+          <circle cx="50" cy="50" r="44" class="ring-bg"/>
+          <circle cx="50" cy="50" r="44" class="ring-fg" id="splash-ring-fg"/>
+        </svg>
+        <div class="splash-pct" id="splash-pct">0%</div>
+      </div>
+      <div class="splash-msg" id="splash-msg">Cargando contenido...</div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ HOME ═══════════════ -->
+  <div id="screen-home" class="screen">
+    <div class="home-wrap">
+      <div class="home-brand">
+        <div class="home-logo">RANDY TV</div>
+        <div class="home-sub">STREAMING</div>
+      </div>
+      <div class="home-menu" id="home-menu">
+        <div class="home-btn focusable" data-action="live">
+          <span class="home-btn-icon">📺</span>
+          <span class="home-btn-label">TV en Vivo</span>
+        </div>
+        <div class="home-btn focusable" data-action="vod">
+          <span class="home-btn-icon">🎬</span>
+          <span class="home-btn-label">Películas</span>
+        </div>
+        <div class="home-btn focusable" data-action="series">
+          <span class="home-btn-icon">📀</span>
+          <span class="home-btn-label">Series</span>
+        </div>
+        <div class="home-btn focusable" data-action="simpsons">
+          <span class="home-btn-icon">⭐</span>
+          <span class="home-btn-label">Simpsons 24h</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ LIVE / VOD / SERIES (pantalla de lista) ═══════════════ -->
+  <div id="screen-list" class="screen">
+    <div class="topbar">
+      <div class="topbar-home focusable" id="list-home-btn">🏠</div>
+      <div class="topbar-title" id="list-title">TV EN VIVO</div>
+      <div class="topbar-search">
+        <input type="text" id="search-input" class="search-input" placeholder="Buscar...">
+      </div>
+    </div>
+    <div class="catbar" id="catbar"></div>
+    <div class="grid-wrap">
+      <div class="grid" id="content-grid"></div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ PLAYER ═══════════════ -->
+  <div id="screen-player" class="screen">
+    <video id="main-video" class="main-video" autoplay playsinline></video>
+    <!-- overlay de info (arriba) -->
+    <div class="player-topbar" id="player-topbar">
+      <div class="player-info">
+        <img id="player-logo" class="player-logo" src="" alt="">
+        <div class="player-info-text">
+          <div class="player-title" id="player-title"></div>
+          <div class="player-live-badge" id="player-live-badge">● EN VIVO</div>
+        </div>
+      </div>
+      <div class="player-close focusable" id="player-close">✕</div>
+    </div>
+    <!-- spinner buffering -->
+    <div class="player-spinner" id="player-spinner">
+      <div class="spinner-ring"></div>
+      <div class="spinner-pct" id="spinner-pct">0%</div>
+    </div>
+    <!-- barra inferior VOD -->
+    <div class="player-bar" id="player-bar">
+      <div class="progress-wrap" id="progress-wrap">
+        <div class="progress-bg"></div>
+        <div class="progress-fill" id="progress-fill"></div>
+      </div>
+      <div class="player-times">
+        <span id="time-current">00:00</span>
+        <span id="time-total">--:--</span>
+      </div>
+      <div class="player-btns" id="player-btns">
+        <div class="pbtn focusable" id="pbtn-rew"  data-action="rew">⏪ 15s</div>
+        <div class="pbtn focusable" id="pbtn-play" data-action="play">⏸</div>
+        <div class="pbtn focusable" id="pbtn-fwd"  data-action="fwd">⏩ 30s</div>
+      </div>
+      <div class="player-hint" id="player-hint"></div>
+    </div>
+    <!-- hint canales vivo -->
+    <div class="player-live-hint" id="player-live-hint">▲▼ Canal  |  ← Salir</div>
+    <!-- error overlay -->
+    <div class="player-error" id="player-error">
+      <div class="player-error-msg" id="player-error-msg"></div>
+      <div class="pbtn focusable" id="player-retry-btn" data-action="retry">↺ Reintentar</div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ SCRIPTS ═══════════════ -->
+  <!-- hls.js v0.12 ES5 — compatible Chromium 53 -->
+  <script src="hls.min.js"></script>
+  <script src="api.js"></script>
+  <script src="nav.js"></script>
+  <script src="splash.js"></script>
+  <script src="home.js"></script>
+  <script src="live.js"></script>
+  <script src="vod.js"></script>
+  <script src="player.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
