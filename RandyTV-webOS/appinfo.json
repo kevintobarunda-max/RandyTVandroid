@@ -1,6 +1,6 @@
 {
   "id": "com.randytv.webos",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "vendor": "RandyTV",
   "type": "web",
   "main": "index.html",
@@ -8,5 +8,9 @@
   "icon": "img/icon80.png",
   "largeIcon": "img/icon130.png",
   "disableBackHistoryAPI": false,
-  "handlesRelaunch": false
+  "handlesRelaunch": false,
+  "allowCrossOriginWhitelist": [
+    {"source": "*", "target": "http://tv.streamid.tv:8080"},
+    {"source": "*", "target": "https://api.themoviedb.org"}
+  ]
 }

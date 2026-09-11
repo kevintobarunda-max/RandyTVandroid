@@ -16,11 +16,9 @@ var API = (function () {
      lcp --proxyUrl http://tv.streamid.tv:8080 --port 8010
      Cambia PROXY_IP por la IP de tu Mac (ej: 172.20.10.14)
   ─────────────────────────────────────────────────────────────── */
-  var PROXY = 'http://172.20.10.14:8010/proxy';
-
   /* ── URLs ─────────────────────────────────────────────────── */
   function apiUrl(action) {
-    return PROXY + '/player_api.php?username=' + USERNAME +
+    return SERVER + '/player_api.php?username=' + USERNAME +
            '&password=' + PASSWORD + '&action=' + action;
   }
   function liveUrl(streamId) {
@@ -38,8 +36,7 @@ var API = (function () {
   function fetchJSON(url, callback) {
     var xhr = new XMLHttpRequest();
     xhr.open('GET', url, true);
-    xhr.setRequestHeader('User-Agent', 'RandyTV/1.0');
-    xhr.timeout = 20000;
+    xhr.timeout = 25000;
     xhr.onreadystatechange = function () {
       if (xhr.readyState !== 4) return;
       if (xhr.status >= 200 && xhr.status < 300) {
