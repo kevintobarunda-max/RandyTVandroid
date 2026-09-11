@@ -16,7 +16,7 @@ var API = (function () {
      lcp --proxyUrl http://tv.streamid.tv:8080 --port 8010
      Cambia PROXY_IP por la IP de tu Mac (ej: 172.20.10.14)
   ─────────────────────────────────────────────────────────────── */
-  var PROXY = 'http://172.20.10.14:8010';
+  var PROXY = 'http://172.20.10.14:8010/proxy';
 
   /* ── URLs ─────────────────────────────────────────────────── */
   function apiUrl(action) {
