@@ -13,7 +13,8 @@ var https = require('https');
 var url   = require('url');
 
 var TARGET_HOST = 'tv.streamid.tv';
-var TARGET_PORT = 8080;
+var TARGET_PORT = 443;
+var TARGET_HTTPS = true;
 var PROXY_PORT  = process.env.PORT || 9090;
 
 var BROWSER_HEADERS = {
@@ -52,7 +53,7 @@ var server = http.createServer(function(req, res) {
     headers:  BROWSER_HEADERS
   };
 
-  var proxyReq = http.request(options, function(proxyRes) {
+  var proxyReq = (TARGET_HTTPS ? https : http).request(options, function(proxyRes) {
     var chunks = [];
 
     proxyRes.on('data', function(chunk) { chunks.push(chunk); });
