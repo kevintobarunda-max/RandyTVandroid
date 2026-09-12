@@ -190,7 +190,8 @@ html,body{width:1280px;height:720px;overflow:hidden;background:#0a0a0a;color:#ff
 (function(){
 'use strict';
 
-var SRV='http://tv.streamid.tv:8080',USR='cristobalignacio6834',PWD='Ajud4CU6dH3Q';
+var SRV='http://172.20.10.14:9090',USR='cristobalignacio6834',PWD='Ajud4CU6dH3Q';
+var MEDIA='http://tv.streamid.tv:8080'; /* streams van directo, no por proxy */
 var AKW=['xxx','adult','porn','erotic','playboy','hustle','penthouse','brazzers','18+','sexy','venus','desnud','vivid'];
 
 var S={scr:'splash',mode:'live',cat:'2mb',liveCats:[],vodCats:[],live:[],vod:[],loaded:0,liveDone:false,chans:[],chIdx:0,isLive:false};
@@ -202,8 +203,8 @@ function isSimp(s){return s.name.toLowerCase().indexOf('simpson')!==-1;}
 function img(s){return s.stream_icon||s.cover||'';}
 function rat(s){var r=parseFloat(s.rating);if(!isNaN(r)&&r>0)return r;r=parseFloat(s.rating_5based);if(!isNaN(r)&&r>0)return r*2;return null;}
 function api(a){return SRV+'/player_api.php?username='+USR+'&password='+PWD+'&action='+a;}
-function lurl(id){return SRV+'/live/'+USR+'/'+PWD+'/'+id+'.m3u8';}
-function vurl(id,e){return SRV+'/movie/'+USR+'/'+PWD+'/'+id+'.'+(e||'mp4');}
+function lurl(id){return MEDIA+'/live/'+USR+'/'+PWD+'/'+id+'.m3u8';}
+function vurl(id,e){return MEDIA+'/movie/'+USR+'/'+PWD+'/'+id+'.'+(e||'mp4');}
 function ffmt(ms){var s=Math.floor(ms/1000),m=Math.floor(s/60);s=s%60;return(m<10?'0':'')+m+':'+(s<10?'0':'')+s;}
 function $id(id){return document.getElementById(id);}
 
