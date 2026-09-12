@@ -14,7 +14,7 @@ var url   = require('url');
 
 var TARGET_HOST = 'tv.streamid.tv';
 var TARGET_PORT = 8080;
-var PROXY_PORT  = 9090;
+var PROXY_PORT  = process.env.PORT || 9090;
 
 var BROWSER_HEADERS = {
   'User-Agent':      'Mozilla/5.0 (SMART-TV; Linux; Tizen 5.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/56.0.2924.0 Safari/537.36',
