@@ -20,18 +20,73 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.2'
-      - run: gradle :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease --no-daemon
+      - name: Restore development signing identity
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: randytv-hy300-development-signing-v1
+      - run: gradle :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease :app:assembleProjector --no-daemon
+      - name: Verify HY300 installer
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk=app/build/outputs/apk/projector/app-projector.apk
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --min-sdk-version 31 "$apk"
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging "$apk" > /tmp/apk-badging.txt
+          cat /tmp/apk-badging.txt
+          grep -q "package: name='com.randytv.mobile.hy300'" /tmp/apk-badging.txt
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump xmltree "$apk" AndroidManifest.xml > /tmp/apk-manifest.txt
+          if grep -E 'android:(testOnly|debuggable).*0xffffffff' /tmp/apk-manifest.txt; then
+            exit 1
+          fi
+          mkdir -p installer
+          cp "$apk" installer/RandyTV-HY300.apk
+          sha256sum installer/RandyTV-HY300.apk > installer/SHA256.txt
       - name: Lint
         run: |
-          gradle :app:lintDebug --no-daemon || {
+          gradle :app:lintDebug :app:lintProjector --no-daemon || {
             cat app/build/intermediates/lint_intermediate_text_report/debug/lint-results-debug.txt
             exit 1
           }
       - uses: actions/upload-artifact@v4
+        with:
+          name: RandyTV-HY300-instalar
+          path: installer/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: RandyTV-debug
-          path: |
-            app/build/outputs/apk/debug/app-debug.apk
-            app/build/reports/lint-results-debug.*
+          name: RandyTV-reports
+          path: app/build/reports/
           if-no-files-found: warn
+  install-android12:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/download-artifact@v4
+        with:
+          name: RandyTV-HY300-instalar
+          path: installer
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Install and reinstall on Android 12
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 31
+          target: default
+          arch: x86_64
+          ram-size: 2048M
+          disk-size: 4096M
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: |
+            adb install installer/RandyTV-HY300.apk
+            adb install -r installer/RandyTV-HY300.apk
+            adb shell pm path com.randytv.mobile.hy300

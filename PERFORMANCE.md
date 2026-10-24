@@ -40,3 +40,6 @@ Local assembleDebug/lintDebug could not start: this environment cannot reach ser
 - Changing presets re-prepares at VOD position or live edge, preserving pause/play intent. GPU processing errors disable presets and retry Original.
 - Device checks: grayscale ramp, dark/bright scenes, live/VOD, rapid zapping, preset persistence, pause/background/resume and dropped frames against Original.
 - Prior revision 452f63f passed builds/lint in Actions run 40047904384. Presets require a fresh build and physical HY300 validation.
+
+## Installation revision
+A separate signed, non-debuggable projector build uses com.randytv.mobile.hy300 and label Randy TV HY300 to avoid replacing a differently signed original app. CI checks APK metadata/signature and installs/reinstalls it on API 31. This addresses a suspected signature conflict; the device error code is not available.

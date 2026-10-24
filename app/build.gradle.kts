@@ -11,11 +11,24 @@ android {
         applicationId = "com.randytv.mobile"
         minSdk = 21
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
+        manifestPlaceholders["appLabel"] = "Randy TV"
     }
 
     buildTypes {
+        create("projector") {
+            initWith(getByName("release"))
+            applicationIdSuffix = ".hy300"
+            versionNameSuffix = "-hy300"
+            isMinifyEnabled = true
+            isShrinkResources = true
+            isDebuggable = false
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
+            manifestPlaceholders["appLabel"] = "Randy TV HY300"
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
