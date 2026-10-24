@@ -1,7 +1,6 @@
 name: Diagnose installed HY300 APK
 on:
-  push:
-    branches: [codex/android12-low-memory]
+  workflow_dispatch:
 permissions:
   contents: read
   actions: read

@@ -30,18 +30,28 @@ class DataRepository {
     var loadDone by mutableStateOf(false)
         private set
 
+    var loadError by mutableStateOf<String?>(null)
+        private set
+    private var loadJob: Job? = null
     private var loaded = 0
-    private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob() +
+        CoroutineExceptionHandler { _, error ->
+            Log.e("RandyTV", "Catalog load failed: ${error.javaClass.simpleName}")
+            loadError = "No se pudo cargar el catálogo. Comprueba la conexión y pulsa Reintentar."
+            loadDone = true
+        })
 
     var simpsonsChannels by mutableStateOf<List<LiveStream>>(emptyList())
         private set
 
     fun loadAll() {
+        loadJob?.cancel()
+        loadError = null
         loaded = 0
         loadProgress = 0.0
         loadDone = false
 
-        scope.launch {
+        loadJob = scope.launch {
             // FASE 1: Solo TV en vivo (lo mas importante) - rapido
             val fase1 = listOf(
                 async { liveCategories = api.getLiveCategories(); tick() },
@@ -52,6 +62,9 @@ class DataRepository {
 
             // Ir al home inmediatamente
             loadDone = true
+            if (liveStreams.isEmpty()) {
+                loadError = "El catálogo está vacío o no se pudo conectar. Pulsa Reintentar."
+            }
 
             // FASE 2: Cargar pelis y series en segundo plano
             // Serialize large catalogs to avoid concurrent JSON allocation peaks.

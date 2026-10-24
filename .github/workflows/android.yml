@@ -90,3 +90,30 @@ jobs:
             adb install installer/RandyTV-HY300.apk
             adb install -r installer/RandyTV-HY300.apk
             adb shell pm path com.randytv.mobile.hy300
+            mkdir -p startup
+            adb shell svc wifi disable
+            adb shell svc data disable
+            adb logcat -c
+            adb shell am start -W -n com.randytv.mobile.hy300/com.randytv.mobile.MainActivity
+            sleep 12
+            adb logcat -b crash -d > startup/crash.txt
+            cat startup/crash.txt
+            adb shell uiautomator dump /sdcard/window.xml
+            adb pull /sdcard/window.xml startup/window.xml
+            adb exec-out screencap -p > startup/home.png
+            adb shell pidof com.randytv.mobile.hy300
+            grep -q 'TV en Vivo' startup/window.xml
+            if grep -q 'Process: com.randytv.mobile.hy300' startup/crash.txt; then exit 1; fi
+            adb shell input keyevent 20
+            adb shell input keyevent 23
+            sleep 2
+            adb shell pidof com.randytv.mobile.hy300
+            adb shell am force-stop com.randytv.mobile.hy300
+            adb shell am start -W -n com.randytv.mobile.hy300/com.randytv.mobile.MainActivity
+            sleep 10
+            adb shell pidof com.randytv.mobile.hy300
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: HY300-startup-verified
+          path: startup/

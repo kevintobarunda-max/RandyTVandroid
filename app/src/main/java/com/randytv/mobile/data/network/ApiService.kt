@@ -60,17 +60,17 @@ class ApiService {
         }
 
     suspend fun getLiveCategories(): List<Category> =
-        fetch<List<Category>>("get_live_categories", object : TypeToken<List<Category>>() {}.type) ?: emptyList()
+        fetch<List<Category>>("get_live_categories", TypeToken.getParameterized(List::class.java, Category::class.java).type) ?: emptyList()
     suspend fun getVodCategories(): List<Category> =
-        fetch<List<Category>>("get_vod_categories", object : TypeToken<List<Category>>() {}.type) ?: emptyList()
+        fetch<List<Category>>("get_vod_categories", TypeToken.getParameterized(List::class.java, Category::class.java).type) ?: emptyList()
     suspend fun getSeriesCategories(): List<Category> =
-        fetch<List<Category>>("get_series_categories", object : TypeToken<List<Category>>() {}.type) ?: emptyList()
+        fetch<List<Category>>("get_series_categories", TypeToken.getParameterized(List::class.java, Category::class.java).type) ?: emptyList()
     suspend fun getLiveStreams(): List<LiveStream> =
-        fetch<List<LiveStream>>("get_live_streams", object : TypeToken<List<LiveStream>>() {}.type) ?: emptyList()
+        fetch<List<LiveStream>>("get_live_streams", TypeToken.getParameterized(List::class.java, LiveStream::class.java).type) ?: emptyList()
     suspend fun getVodStreams(): List<VodStream> =
-        fetch<List<VodStream>>("get_vod_streams", object : TypeToken<List<VodStream>>() {}.type) ?: emptyList()
+        fetch<List<VodStream>>("get_vod_streams", TypeToken.getParameterized(List::class.java, VodStream::class.java).type) ?: emptyList()
     suspend fun getSeriesList(): List<SeriesItem> =
-        fetch<List<SeriesItem>>("get_series", object : TypeToken<List<SeriesItem>>() {}.type) ?: emptyList()
+        fetch<List<SeriesItem>>("get_series", TypeToken.getParameterized(List::class.java, SeriesItem::class.java).type) ?: emptyList()
     suspend fun getSeriesInfo(seriesId: String): SeriesInfoResponse? =
         fetch("get_series_info&series_id=$seriesId", SeriesInfoResponse::class.java)
 }

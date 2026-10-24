@@ -85,7 +85,9 @@ fun RandyTVApp(playerController: PlayerController, repository: DataRepository) {
             onNavigateLive = { showSimpsons = false; currentScreen = "live" },
             onNavigateVod = { currentScreen = "vod" },
             onNavigateSeries = { currentScreen = "series" },
-            onNavigateSimpsons = { showSimpsons = true; currentScreen = "live" }
+            onNavigateSimpsons = { showSimpsons = true; currentScreen = "live" },
+            statusMessage = repository.loadError,
+            onRetry = { repository.loadAll() }
         )
         "live" -> ListScreen(type = ListType.LIVE, showSimpsons = showSimpsons, repository = repository,
             onHome = { currentScreen = "home"; showSimpsons = false },
