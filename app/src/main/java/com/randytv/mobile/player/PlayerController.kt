@@ -1,7 +1,7 @@
 package com.randytv.mobile.player
 
 import android.content.Context
-import android.util.Log
+import android.app.ActivityManager
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -25,28 +25,53 @@ class PlayerController(context: Context) {
 
     private val audioAttrs = AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build()
 
-    // INICIO RAPIDO: solo 500ms para empezar, pero buffer grande para no cortarse
-    private val fastBuffer = DefaultLoadControl.Builder()
-        .setBufferDurationsMs(5000, 120000, 500, 5000)
+    // A single decoder and bounded sample buffer for 2 GB Android projectors.
+    private val lowMemory = (context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager)
+        .let { manager ->
+            val info = ActivityManager.MemoryInfo()
+            manager.getMemoryInfo(info)
+            manager.isLowRamDevice || info.totalMem <= 3L * 1024 * 1024 * 1024
+        }
+    private val loadControl = DefaultLoadControl.Builder()
+        .setBufferDurationsMs(5000, 15000, 1000, 2500)
+        .setTargetBufferBytes(if (lowMemory) 12 * 1024 * 1024 else 24 * 1024 * 1024)
+        .setPrioritizeTimeOverSizeThresholds(false)
+        .setBackBuffer(0, false)
         .build()
 
-    // Habilita decodificadores de extension (software) como respaldo si el hardware
-    // no soporta el codec de audio (AC3/EAC3/DTS). Sin la extension FFmpeg compilada
-    // desde codigo fuente esto no tiene efecto propio, pero es seguro dejarlo activo
-    // para cuando se agregue esa extension mas adelante.
-    private val renderersFactory = DefaultRenderersFactory(context)
-        .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
-
-    val player1: ExoPlayer = ExoPlayer.Builder(context, renderersFactory).setLoadControl(fastBuffer).build().apply {
-        playWhenReady = true; setAudioAttributes(audioAttrs, true)
-        addListener(audioFailureListener { player1AudioUnavailable = it })
+    val activePlayer: ExoPlayer = ExoPlayer.Builder(
+        context.applicationContext,
+        DefaultRenderersFactory(context.applicationContext).setEnableDecoderFallback(true)
+    ).setLoadControl(loadControl).build().apply {
+        setAudioAttributes(audioAttrs, true)
+        setHandleAudioBecomingNoisy(true)
+        if (lowMemory) {
+            trackSelectionParameters = trackSelectionParameters.buildUpon()
+                .setMaxVideoSize(1280, 720)
+                .setMaxVideoBitrate(2_500_000)
+                .setMaxVideoFrameRate(30)
+                .build()
+        }
+        addListener(audioFailureListener { audioUnavailable = it })
+        addListener(object : Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                isBuffering = playbackState == Player.STATE_BUFFERING
+                isTuning = isLive && isBuffering
+            }
+            override fun onIsPlayingChanged(playing: Boolean) { isActuallyPlaying = playing }
+            override fun onPlayerError(error: PlaybackException) {
+                isBuffering = false
+                isTuning = false
+                playbackError = "No se pudo reproducir el contenido. Pulsa Reintentar."
+            }
+        })
     }
-    val player2: ExoPlayer = ExoPlayer.Builder(context, renderersFactory).setLoadControl(fastBuffer).build().apply {
-        playWhenReady = true; setAudioAttributes(audioAttrs, true)
-        addListener(audioFailureListener { player2AudioUnavailable = it })
-    }
 
-    var showPlayer1 by mutableStateOf(true)
+    var isBuffering by mutableStateOf(false)
+        private set
+    var isActuallyPlaying by mutableStateOf(false)
+        private set
+    var playbackError by mutableStateOf<String?>(null)
         private set
     var isPlaying by mutableStateOf(false)
         private set
@@ -69,24 +94,12 @@ class PlayerController(context: Context) {
         private set
     var isTuning by mutableStateOf(false)
         private set
-    var tuningProgress by mutableFloatStateOf(0f)
+
+    var audioUnavailable by mutableStateOf(false)
         private set
-
-    // Indica si el contenido actualmente activo no tiene audio reproducible
-    // (codec no compatible con ningun decodificador disponible).
-    private var player1AudioUnavailable by mutableStateOf(false)
-    private var player2AudioUnavailable by mutableStateOf(false)
-    val audioUnavailable: Boolean
-        get() = if (showPlayer1) player1AudioUnavailable else player2AudioUnavailable
-
     var channels: List<LiveStream> = emptyList()
-    private var nextReady = false
-    private var nextIdx = -1
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     val aspectModes = listOf("Auto", "16:9", "4:3", "Fill")
-
-    val activePlayer: ExoPlayer get() = if (showPlayer1) player1 else player2
-    val standbyPlayer: ExoPlayer get() = if (showPlayer1) player2 else player1
 
     // Detecta si, tras cambiar de pista, el grupo de audio existe pero no quedo
     // seleccionado (el decodificador no pudo reproducirlo), o si hay un error de
@@ -115,99 +128,51 @@ class PlayerController(context: Context) {
             .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, false).build()
     }
 
-    fun playLive(streamId: String, name: String, icon: String) {
-        isLive = true; title = name; logo = icon; isPlaying = true; showPlayer1 = true
-        isTuning = true; tuningProgress = 0f
-        player1AudioUnavailable = false; player2AudioUnavailable = false
-        player2.stop(); player2.volume = 0f
-        player1.setMediaItem(MediaItem.fromUri(ApiConfig.liveUrl(streamId)))
-        player1.prepare(); forcePlay(player1)
-        scope.launch {
-            var w = 0; while (player1.playbackState != Player.STATE_READY && w < 10000) { delay(50); w += 50; tuningProgress = (w / 10000f).coerceAtMost(0.95f) }
-            tuningProgress = 1f; delay(100); isTuning = false
-        }
-        // Precargar siguiente INMEDIATO
-        scope.launch { delay(30); preloadNext() }
+    private fun playUrl(url: String, name: String, icon: String, live: Boolean) {
+        scope.coroutineContext.cancelChildren()
+        isLive = live
+        title = name
+        logo = icon
+        isPlaying = true
+        audioUnavailable = false
+        playbackError = null
+        isSeeking = false
+        progress = 0f
+        timeStr = "00:00"
+        durationStr = "--:--"
+        activePlayer.setMediaItem(MediaItem.fromUri(url))
+        activePlayer.prepare()
+        forcePlay(activePlayer)
     }
 
-    private fun preloadNext() {
+    fun playLive(streamId: String, name: String, icon: String) =
+        playUrl(ApiConfig.liveUrl(streamId), name, icon, true)
+
+    fun zapNext() = zap(1)
+    fun zapPrev() = zap(-1)
+
+    private fun zap(direction: Int) {
         if (channels.isEmpty() || !isLive) return
-        val nIdx = (currentIdx + 1) % channels.size
-        val ch = channels[nIdx]
-        standbyPlayer.stop()
-        standbyPlayer.setMediaItem(MediaItem.fromUri(ApiConfig.liveUrl(ch.streamId.toString())))
-        standbyPlayer.prepare(); standbyPlayer.playWhenReady = true; standbyPlayer.play(); standbyPlayer.volume = 0f
-        // Esperar a que este listo
-        scope.launch {
-            var w = 0; while (standbyPlayer.playbackState != Player.STATE_READY && w < 30000) { delay(100); w += 100 }
-            if (standbyPlayer.playbackState == Player.STATE_READY) { nextReady = true; nextIdx = nIdx; Log.d("RandyTV", "PRELOAD LISTO: ${ch.name}") }
-        }
+        currentIdx = (currentIdx + direction + channels.size) % channels.size
+        val channel = channels[currentIdx]
+        playLive(channel.streamId.toString(), channel.name, channel.streamIcon)
     }
 
-    fun zapNext() {
-        if (channels.isEmpty()) return
-        currentIdx = (currentIdx + 1) % channels.size
-        val ch = channels[currentIdx]
+    fun playVOD(streamId: String, ext: String, name: String) =
+        playUrl(ApiConfig.vodUrl(streamId, ext), name, "", false)
 
-        if (nextReady && nextIdx == currentIdx) {
-            // CAMBIO INSTANTANEO
-            forcePlay(standbyPlayer)
-            activePlayer.volume = 0f; activePlayer.stop()
-            title = ch.name; logo = ch.streamIcon
-            showPlayer1 = !showPlayer1; nextReady = false; nextIdx = -1
-            isTuning = false; tuningProgress = 1f
-            scope.launch { delay(30); preloadNext() }
-        } else {
-            // No precargado - cargar rapido en standby
-            isTuning = true; tuningProgress = 0f
-            standbyPlayer.stop()
-            standbyPlayer.setMediaItem(MediaItem.fromUri(ApiConfig.liveUrl(ch.streamId.toString())))
-            standbyPlayer.prepare(); standbyPlayer.playWhenReady = true; standbyPlayer.play(); standbyPlayer.volume = 0f
-            scope.launch {
-                var w = 0; while (standbyPlayer.playbackState != Player.STATE_READY && w < 10000) { delay(50); w += 50; tuningProgress = (w / 10000f).coerceAtMost(0.95f) }
-                tuningProgress = 1f
-                forcePlay(standbyPlayer); activePlayer.volume = 0f; activePlayer.stop()
-                title = ch.name; logo = ch.streamIcon
-                showPlayer1 = !showPlayer1; nextReady = false; nextIdx = -1
-                delay(30); isTuning = false; preloadNext()
-            }
-        }
-    }
+    fun playSeries(episodeId: String, ext: String, name: String) =
+        playUrl(ApiConfig.seriesUrl(episodeId, ext), name, "", false)
 
-    fun zapPrev() {
-        if (channels.isEmpty()) return
-        currentIdx = (currentIdx - 1 + channels.size) % channels.size
-        val ch = channels[currentIdx]
-        nextReady = false; nextIdx = -1
-        isTuning = true; tuningProgress = 0f
-        standbyPlayer.stop()
-        standbyPlayer.setMediaItem(MediaItem.fromUri(ApiConfig.liveUrl(ch.streamId.toString())))
-        standbyPlayer.prepare(); standbyPlayer.playWhenReady = true; standbyPlayer.play(); standbyPlayer.volume = 0f
-        scope.launch {
-            var w = 0; while (standbyPlayer.playbackState != Player.STATE_READY && w < 10000) { delay(50); w += 50; tuningProgress = (w / 10000f).coerceAtMost(0.95f) }
-            tuningProgress = 1f
-            forcePlay(standbyPlayer); activePlayer.volume = 0f; activePlayer.stop()
-            title = ch.name; logo = ch.streamIcon
-            showPlayer1 = !showPlayer1
-            delay(30); isTuning = false; preloadNext()
-        }
-    }
-
-    fun playVOD(streamId: String, ext: String, name: String) {
-        stopAll(); isLive = false; title = name; isPlaying = true; showPlayer1 = true
-        player1AudioUnavailable = false
-        player1.setMediaItem(MediaItem.fromUri(ApiConfig.vodUrl(streamId, ext))); player1.prepare(); forcePlay(player1)
-    }
-
-    fun playSeries(episodeId: String, ext: String, name: String) {
-        stopAll(); isLive = false; title = name; isPlaying = true; showPlayer1 = true
-        player1AudioUnavailable = false
-        player1.setMediaItem(MediaItem.fromUri(ApiConfig.seriesUrl(episodeId, ext))); player1.prepare(); forcePlay(player1)
+    fun retry() {
+        playbackError = null
+        activePlayer.prepare()
+        activePlayer.play()
     }
 
     fun togglePause() { if (activePlayer.isPlaying) activePlayer.pause() else { activePlayer.playWhenReady = true; activePlayer.play() } }
     fun seek(fraction: Float) { isSeeking = true; val d = activePlayer.duration; if (d > 0) { activePlayer.seekTo((fraction * d).toLong()); progress = fraction }; scope.launch { delay(600); isSeeking = false } }
-    fun jumpForward(seconds: Int = 30) { activePlayer.seekTo((activePlayer.currentPosition + seconds * 1000L).coerceAtMost(activePlayer.duration)) }
+    fun jumpForward(seconds: Int = 30) { val duration = activePlayer.duration; if (duration > 0) activePlayer.seekTo((activePlayer.currentPosition + seconds * 1000L).coerceAtMost(duration)) }
     fun jumpBackward(seconds: Int = 15) { activePlayer.seekTo((activePlayer.currentPosition - seconds * 1000L).coerceAtLeast(0)) }
     fun cycleAspect() { aspectMode = (aspectMode + 1) % aspectModes.size }
 
@@ -231,7 +196,15 @@ class PlayerController(context: Context) {
     fun updateProgress() { if (isSeeking) return; val d = activePlayer.duration; val p = activePlayer.currentPosition; if (d > 0) { progress = p.toFloat() / d.toFloat(); timeStr = fmt(p); durationStr = fmt(d) } }
     private fun fmt(ms: Long): String { val s = (ms / 1000).toInt(); return String.format("%02d:%02d", s / 60, s % 60) }
 
-    fun stopAll() { player1.stop(); player2.stop(); player1.clearMediaItems(); player2.clearMediaItems(); nextReady = false; nextIdx = -1; isTuning = false }
+    fun stopAll() {
+        scope.coroutineContext.cancelChildren()
+        activePlayer.stop()
+        activePlayer.clearMediaItems()
+        isTuning = false
+        isBuffering = false
+        isSeeking = false
+        playbackError = null
+    }
     fun stop() { stopAll(); isPlaying = false; isLive = false; title = ""; logo = ""; progress = 0f; timeStr = "00:00"; durationStr = "--:--" }
-    fun release() { scope.cancel(); player1.release(); player2.release() }
+    fun release() { scope.cancel(); activePlayer.release() }
 }

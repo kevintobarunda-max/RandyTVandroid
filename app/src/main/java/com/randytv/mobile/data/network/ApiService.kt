@@ -42,40 +42,35 @@ class ApiService {
 
     private val gson: Gson = GsonBuilder().setLenient().create()
 
-    private suspend fun fetchJson(url: String): String? = withContext(Dispatchers.IO) {
-        try {
-            val request = Request.Builder().url(url).header("User-Agent", "RandyTV/1.0").build()
-            val response = client.newCall(request).execute()
-            if (response.isSuccessful) response.body?.string() else null
-        } catch (e: Exception) { e.printStackTrace(); null }
-    }
+    // Parse directly from the response stream on IO: avoid a second full catalog string.
+    private suspend fun <T> fetch(action: String, type: java.lang.reflect.Type): T? =
+        withContext(Dispatchers.IO) {
+            try {
+                val request = Request.Builder().url(ApiConfig.apiUrl(action))
+                    .header("User-Agent", "RandyTV/1.0").build()
+                client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) return@withContext null
+                    response.body?.charStream()?.use { reader -> gson.fromJson<T>(reader, type) }
+                }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                null
+            }
+        }
 
-    suspend fun getLiveCategories(): List<Category> {
-        val json = fetchJson(ApiConfig.apiUrl("get_live_categories")) ?: return emptyList()
-        return try { gson.fromJson(json, object : TypeToken<List<Category>>() {}.type) } catch (e: Exception) { emptyList() }
-    }
-    suspend fun getVodCategories(): List<Category> {
-        val json = fetchJson(ApiConfig.apiUrl("get_vod_categories")) ?: return emptyList()
-        return try { gson.fromJson(json, object : TypeToken<List<Category>>() {}.type) } catch (e: Exception) { emptyList() }
-    }
-    suspend fun getSeriesCategories(): List<Category> {
-        val json = fetchJson(ApiConfig.apiUrl("get_series_categories")) ?: return emptyList()
-        return try { gson.fromJson(json, object : TypeToken<List<Category>>() {}.type) } catch (e: Exception) { emptyList() }
-    }
-    suspend fun getLiveStreams(): List<LiveStream> {
-        val json = fetchJson(ApiConfig.apiUrl("get_live_streams")) ?: return emptyList()
-        return try { gson.fromJson(json, object : TypeToken<List<LiveStream>>() {}.type) } catch (e: Exception) { emptyList() }
-    }
-    suspend fun getVodStreams(): List<VodStream> {
-        val json = fetchJson(ApiConfig.apiUrl("get_vod_streams")) ?: return emptyList()
-        return try { gson.fromJson(json, object : TypeToken<List<VodStream>>() {}.type) } catch (e: Exception) { emptyList() }
-    }
-    suspend fun getSeriesList(): List<SeriesItem> {
-        val json = fetchJson(ApiConfig.apiUrl("get_series")) ?: return emptyList()
-        return try { gson.fromJson(json, object : TypeToken<List<SeriesItem>>() {}.type) } catch (e: Exception) { emptyList() }
-    }
-    suspend fun getSeriesInfo(seriesId: String): SeriesInfoResponse? {
-        val json = fetchJson(ApiConfig.apiUrl("get_series_info&series_id=$seriesId")) ?: return null
-        return try { gson.fromJson(json, SeriesInfoResponse::class.java) } catch (e: Exception) { null }
-    }
+    suspend fun getLiveCategories(): List<Category> =
+        fetch<List<Category>>("get_live_categories", object : TypeToken<List<Category>>() {}.type) ?: emptyList()
+    suspend fun getVodCategories(): List<Category> =
+        fetch<List<Category>>("get_vod_categories", object : TypeToken<List<Category>>() {}.type) ?: emptyList()
+    suspend fun getSeriesCategories(): List<Category> =
+        fetch<List<Category>>("get_series_categories", object : TypeToken<List<Category>>() {}.type) ?: emptyList()
+    suspend fun getLiveStreams(): List<LiveStream> =
+        fetch<List<LiveStream>>("get_live_streams", object : TypeToken<List<LiveStream>>() {}.type) ?: emptyList()
+    suspend fun getVodStreams(): List<VodStream> =
+        fetch<List<VodStream>>("get_vod_streams", object : TypeToken<List<VodStream>>() {}.type) ?: emptyList()
+    suspend fun getSeriesList(): List<SeriesItem> =
+        fetch<List<SeriesItem>>("get_series", object : TypeToken<List<SeriesItem>>() {}.type) ?: emptyList()
+    suspend fun getSeriesInfo(seriesId: String): SeriesInfoResponse? =
+        fetch("get_series_info&series_id=$seriesId", SeriesInfoResponse::class.java)
 }

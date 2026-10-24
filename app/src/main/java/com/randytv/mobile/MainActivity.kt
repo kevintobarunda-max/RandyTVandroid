@@ -31,6 +31,7 @@ import kotlinx.coroutines.delay
 class MainActivity : ComponentActivity() {
     private var playerController: PlayerController? = null
     private val repository = DataRepository()
+    private var resumePlayback = false
     private var errorMsg: String = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -46,8 +47,16 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() { super.onDestroy(); try { playerController?.release() } catch (_: Exception) {}; try { repository.cancel() } catch (_: Exception) {} }
-    override fun onPause() { super.onPause(); try { playerController?.let { if (it.isPlaying) it.activePlayer.pause() } } catch (_: Exception) {} }
-    override fun onResume() { super.onResume(); try { playerController?.let { if (it.isPlaying) it.activePlayer.play() } } catch (_: Exception) {} }
+    override fun onPause() {
+        resumePlayback = playerController?.activePlayer?.playWhenReady == true
+        playerController?.activePlayer?.pause()
+        super.onPause()
+    }
+    override fun onResume() {
+        super.onResume()
+        if (resumePlayback) playerController?.activePlayer?.play()
+        resumePlayback = false
+    }
 }
 
 @Composable

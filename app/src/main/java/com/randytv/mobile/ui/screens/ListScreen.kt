@@ -5,6 +5,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -79,7 +81,6 @@ fun ListScreen(type: ListType, showSimpsons: Boolean = false, repository: DataRe
                 Box(
                     modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(Color(0x0DFFFFFF))
                         .clickable { searchOpen = true }.focusable()
-                        .onFocusChanged { if (it.isFocused) searchOpen = true }
                         .padding(horizontal = 10.dp, vertical = 6.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -97,17 +98,17 @@ fun ListScreen(type: ListType, showSimpsons: Boolean = false, repository: DataRe
                 repository.simpsonsChannels.filter { !isAdult(it.name) }
             }
             LazyVerticalGrid(columns = GridCells.Fixed(6), contentPadding = PaddingValues(14.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                items(simpsonsFiltered) { ch -> TVCard(ch.name, ch.streamIcon, true) { onTapLive(ch) } }
+                items(simpsonsFiltered, key = { it.streamId }, contentType = { "channel" }) { ch -> TVCard(ch.name, ch.streamIcon, true) { onTapLive(ch) } }
             }
         } else if (type == ListType.LIVE) {
             // Categorias: memoizadas, solo se recalculan si cambia la lista base del repo
             val categories = remember(repository.liveCategories) {
                 repository.liveCategories.filter { cat -> !adultKeywords.any { kw -> cat.categoryName.lowercase().contains(kw) } }
             }
-            Row(modifier = Modifier.fillMaxWidth().background(Color(0xFF0A0A0A)).horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                TVCatChip("2MB", selectedCat == "2mb") { selectedCat = "2mb" }
-                TVCatChip("24 Horas", selectedCat == "24h") { selectedCat = "24h" }
-                categories.forEach { cat -> TVCatChip(cat.categoryName, selectedCat == cat.categoryId) { selectedCat = cat.categoryId } }
+            LazyRow(modifier = Modifier.fillMaxWidth().background(Color(0xFF0A0A0A)), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                item { TVCatChip("2MB", selectedCat == "2mb") { selectedCat = "2mb" } }
+                item { TVCatChip("24 Horas", selectedCat == "24h") { selectedCat = "24h" } }
+                items(categories, key = { it.categoryId }) { cat -> TVCatChip(cat.categoryName, selectedCat == cat.categoryId) { selectedCat = cat.categoryId } }
             }
             // Memoizado: filtrar+ordenar la lista completa de canales solo cuando
             // cambia la categoria seleccionada o la lista base del repo (no en cada
@@ -124,7 +125,7 @@ fun ListScreen(type: ListType, showSimpsons: Boolean = false, repository: DataRe
                 if (searchText.isNotEmpty()) currentList.filter { it.name.contains(searchText, true) } else currentList
             }
             LazyVerticalGrid(columns = GridCells.Fixed(7), contentPadding = PaddingValues(14.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                items(searchFiltered.take(150)) { s -> TVCard(s.name, s.streamIcon, true) { onTapLive(s) } }
+                items(searchFiltered, key = { it.streamId }, contentType = { "channel" }) { s -> TVCard(s.name, s.streamIcon, true) { onTapLive(s) } }
             }
         } else {
             // VOD y Series - categorias navegables con control
@@ -132,9 +133,12 @@ fun ListScreen(type: ListType, showSimpsons: Boolean = false, repository: DataRe
                 when (type) { ListType.VOD -> repository.vodCategories; else -> repository.seriesCategories }
                     .filter { cat -> !adultKeywords.any { kw -> cat.categoryName.lowercase().contains(kw) } }
             }
-            if (selectedCat == "2mb" || selectedCat == "24h") selectedCat = categories.firstOrNull()?.categoryId ?: ""
-            Row(modifier = Modifier.fillMaxWidth().background(Color(0xFF0A0A0A)).horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                categories.forEach { cat -> TVCatChip(cat.categoryName, selectedCat == cat.categoryId) { selectedCat = cat.categoryId } }
+            LaunchedEffect(categories) {
+                if (categories.isNotEmpty() && categories.none { it.categoryId == selectedCat })
+                    selectedCat = categories.first().categoryId
+            }
+            LazyRow(modifier = Modifier.fillMaxWidth().background(Color(0xFF0A0A0A)), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                items(categories, key = { it.categoryId }) { cat -> TVCatChip(cat.categoryName, selectedCat == cat.categoryId) { selectedCat = cat.categoryId } }
             }
             when (type) {
                 ListType.VOD -> {
@@ -142,7 +146,7 @@ fun ListScreen(type: ListType, showSimpsons: Boolean = false, repository: DataRe
                         filterVod(repository.vodStreams, selectedCat, searchText)
                     }
                     LazyVerticalGrid(columns = GridCells.Fixed(6), contentPadding = PaddingValues(14.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                        items(f) { s -> TVCard(s.name, s.getImageUrl(), false, s.getRating()) { onTapVod(s) } }
+                        items(f, key = { it.streamId }, contentType = { "poster" }) { s -> TVCard(s.name, s.getImageUrl(), false, s.getRating()) { onTapVod(s) } }
                     }
                 }
                 else -> {
@@ -150,7 +154,7 @@ fun ListScreen(type: ListType, showSimpsons: Boolean = false, repository: DataRe
                         filterSeries(repository.seriesList, selectedCat, searchText)
                     }
                     LazyVerticalGrid(columns = GridCells.Fixed(6), contentPadding = PaddingValues(14.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                        items(f) { s -> TVCard(s.name, s.getImageUrl(), false, s.getRating()) { onTapSeries(s) } }
+                        items(f, key = { it.seriesId }, contentType = { "poster" }) { s -> TVCard(s.name, s.getImageUrl(), false, s.getRating()) { onTapSeries(s) } }
                     }
                 }
             }

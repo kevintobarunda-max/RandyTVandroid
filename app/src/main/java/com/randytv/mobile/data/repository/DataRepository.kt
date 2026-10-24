@@ -33,8 +33,8 @@ class DataRepository {
     private var loaded = 0
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
-    val simpsonsChannels: List<LiveStream>
-        get() = liveStreams.filter { it.name.lowercase().contains("simpson") }
+    var simpsonsChannels by mutableStateOf<List<LiveStream>>(emptyList())
+        private set
 
     fun loadAll() {
         loaded = 0
@@ -44,8 +44,8 @@ class DataRepository {
         scope.launch {
             // FASE 1: Solo TV en vivo (lo mas importante) - rapido
             val fase1 = listOf(
-                async(Dispatchers.IO) { liveCategories = api.getLiveCategories(); tick() },
-                async(Dispatchers.IO) { liveStreams = api.getLiveStreams(); tick() }
+                async { liveCategories = api.getLiveCategories(); tick() },
+                async { liveStreams = api.getLiveStreams(); simpsonsChannels = liveStreams.filter { it.name.contains("simpson", true) }; tick() }
             )
             fase1.awaitAll()
             Log.d("RandyTV", "TV cargada: ${liveStreams.size} canales")
@@ -54,10 +54,11 @@ class DataRepository {
             loadDone = true
 
             // FASE 2: Cargar pelis y series en segundo plano
-            launch(Dispatchers.IO) { vodCategories = api.getVodCategories(); tick() }
-            launch(Dispatchers.IO) { seriesCategories = api.getSeriesCategories(); tick() }
-            launch(Dispatchers.IO) { vodStreams = api.getVodStreams(); tick() }
-            launch(Dispatchers.IO) { seriesList = api.getSeriesList(); tick() }
+            // Serialize large catalogs to avoid concurrent JSON allocation peaks.
+            vodCategories = api.getVodCategories(); tick()
+            seriesCategories = api.getSeriesCategories(); tick()
+            vodStreams = api.getVodStreams(); tick()
+            seriesList = api.getSeriesList(); tick()
         }
     }
 

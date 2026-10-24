@@ -54,12 +54,17 @@ fun PlayerScreen(playerController: PlayerController, onClose: () -> Unit) {
     val mainFocus = remember { FocusRequester() }
     val firstBtnFocus = remember { FocusRequester() }
     var inBarMode by remember { mutableStateOf(false) }
-    var isBuffering by remember { mutableStateOf(true) }
-    var bufferPercent by remember { mutableFloatStateOf(0f) }
-
-    LaunchedEffect(playerController.isPlaying) { while (playerController.isPlaying && !playerController.isLive) { playerController.updateProgress(); delay(500) } }
-    LaunchedEffect(Unit) { if (!playerController.isLive) { isBuffering = true; bufferPercent = 0f; var w = 0; while (playerController.activePlayer.playbackState != androidx.media3.common.Player.STATE_READY && w < 10000) { delay(100); w += 100; bufferPercent = (w / 10000f).coerceAtMost(0.95f) }; bufferPercent = 1f; delay(300); isBuffering = false } else isBuffering = false }
-    LaunchedEffect(Unit) { mainFocus.requestFocus(); repeat(10) { if (!playerController.activePlayer.isPlaying) { playerController.activePlayer.playWhenReady = true; playerController.activePlayer.play() }; delay(200) } }
+    LaunchedEffect(uiVisible, playerController.isLive) {
+        while (uiVisible && !playerController.isLive) {
+            playerController.updateProgress()
+            delay(1000)
+        }
+    }
+    LaunchedEffect(Unit) { mainFocus.requestFocus() }
+    val player = playerController.activePlayer
+    DisposableEffect(player) {
+        onDispose { player.clearVideoSurface() }
+    }
 
     fun showUI() { uiVisible = true; hideJob?.cancel(); hideJob = scope.launch { delay(if (inBarMode) 20000 else 4000); uiVisible = false; inBarMode = false } }
     LaunchedEffect(Unit) { showUI() }
@@ -87,8 +92,24 @@ fun PlayerScreen(playerController: PlayerController, onClose: () -> Unit) {
             .pointerInput(Unit) { detectDragGestures { _, d -> if (playerController.isLive) { if (d.y < -50) { playerController.zapNext(); showUI() } else if (d.y > 50) { playerController.zapPrev(); showUI() } else if (d.x > 80) onClose() } else { if (d.x > 80) onClose() } } }
         )
 
-        if (playerController.isTuning) { Box(modifier = Modifier.align(Alignment.TopEnd).padding(20.dp).size(50.dp).background(Color(0xCC000000), CircleShape), contentAlignment = Alignment.Center) { CircularProgressIndicator(progress = playerController.tuningProgress, modifier = Modifier.size(38.dp), color = FocusGlow, trackColor = Color(0x33FFFFFF), strokeWidth = 3.dp, strokeCap = StrokeCap.Round); Text("${(playerController.tuningProgress * 100).toInt()}%", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = Color.White) } }
-        if (!playerController.isLive && isBuffering) { Box(modifier = Modifier.align(Alignment.Center).size(70.dp).background(Color(0xCC000000), CircleShape), contentAlignment = Alignment.Center) { CircularProgressIndicator(progress = bufferPercent, modifier = Modifier.size(54.dp), color = FocusGlow, trackColor = Color(0x33FFFFFF), strokeWidth = 4.dp, strokeCap = StrokeCap.Round); Text("${(bufferPercent * 100).toInt()}%", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White) } }
+        if (playerController.isBuffering) {
+            CircularProgressIndicator(
+                modifier = Modifier.align(Alignment.Center).size(48.dp),
+                color = FocusGlow
+            )
+        }
+        playerController.playbackError?.let { message ->
+            Column(Modifier.align(Alignment.Center).background(Color(0xDD000000)).padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(message, color = Color.White)
+                Button(onClick = { playerController.retry() }) { Text("Reintentar") }
+            }
+        }
+        if (playerController.audioUnavailable) {
+            Text("Audio no compatible con este dispositivo",
+                color = Color.White,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 100.dp))
+        }
 
         if (uiVisible) {
             Row(modifier = Modifier.align(Alignment.TopStart).padding(16.dp).background(Color(0xAA000000), RoundedCornerShape(8.dp)).padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) { if (playerController.logo.isNotEmpty()) { CachedImage(url = playerController.logo, height = 32.dp, modifier = Modifier.size(32.dp).clip(RoundedCornerShape(6.dp))); Spacer(Modifier.width(8.dp)) }; Column { Text(playerController.title, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 200.dp)); if (playerController.isLive) Row(verticalAlignment = Alignment.CenterVertically) { Box(modifier = Modifier.size(5.dp).background(Color.Red, CircleShape)); Spacer(Modifier.width(4.dp)); Text("EN VIVO", fontSize = 9.sp, color = Color.Red, fontWeight = FontWeight.Bold) } } }
@@ -102,7 +123,7 @@ fun PlayerScreen(playerController: PlayerController, onClose: () -> Unit) {
                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         GreenBtn(Icons.Default.Replay10, Modifier.focusRequester(firstBtnFocus)) { playerController.jumpBackward(15) }
                         Spacer(Modifier.width(6.dp))
-                        GreenBtn(if (playerController.activePlayer.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow) { playerController.togglePause() }
+                        GreenBtn(if (playerController.isActuallyPlaying) Icons.Default.Pause else Icons.Default.PlayArrow) { playerController.togglePause() }
                         Spacer(Modifier.width(6.dp))
                         GreenBtn(Icons.Default.Forward30) { playerController.jumpForward(30) }
                         Spacer(Modifier.weight(1f))
@@ -130,7 +151,7 @@ private fun GreenBtn(icon: ImageVector, extraModifier: Modifier = Modifier, onCl
     IconButton(
         onClick = onClick,
         modifier = extraModifier
-            .size(if (isFocused) 54.dp else 40.dp)
+            .size(48.dp)
             .background(if (isFocused) FocusGreen else Color(0x22FFFFFF), CircleShape)
             .then(if (isFocused) Modifier.border(3.dp, FocusGlow, CircleShape) else Modifier)
             .onFocusChanged { isFocused = it.isFocused }
