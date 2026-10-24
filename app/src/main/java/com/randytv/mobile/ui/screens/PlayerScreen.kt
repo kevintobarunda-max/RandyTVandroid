@@ -185,7 +185,7 @@ fun PlayerScreen(playerController: PlayerController, onClose: () -> Unit) {
                     Text("Modo activo: ${playerController.pictureMode.label}")
                     PictureMode.values().forEach { mode ->
                         OutlinedButton(
-                            onClick = { playerController.setPictureMode(mode) },
+                            onClick = { playerController.applyPictureMode(mode) },
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Column(Modifier.fillMaxWidth()) {

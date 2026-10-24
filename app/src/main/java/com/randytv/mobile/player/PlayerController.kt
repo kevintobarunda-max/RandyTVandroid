@@ -77,7 +77,7 @@ class PlayerController(context: Context) {
                 if (pictureMode != PictureMode.ORIGINAL && error.errorCode in listOf(
                         PlaybackException.ERROR_CODE_VIDEO_FRAME_PROCESSING_FAILED,
                         PlaybackException.ERROR_CODE_VIDEO_FRAME_PROCESSOR_INIT_FAILED)) {
-                    setPictureMode(PictureMode.ORIGINAL)
+                    applyPictureMode(PictureMode.ORIGINAL)
                     pictureNotice = "Aclarado desactivado: el procesador gráfico no admite este efecto."
                     return
                 }
@@ -184,7 +184,7 @@ class PlayerController(context: Context) {
         playUrl(ApiConfig.seriesUrl(episodeId, ext), name, "", false)
 
     /** Reconfigure effects only while stopped, as required by Media3 1.2. */
-    fun setPictureMode(next: PictureMode) {
+    fun applyPictureMode(next: PictureMode) {
         if (next == pictureMode) return
         val item = activePlayer.currentMediaItem
         val position = activePlayer.currentPosition
