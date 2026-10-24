@@ -27,7 +27,7 @@ import kotlinx.coroutines.*
 class PlayerController(context: Context) {
 
     private val preferences = context.applicationContext.getSharedPreferences("projector", Context.MODE_PRIVATE)
-    var brightnessLevel by mutableIntStateOf(preferences.getInt("brightness", 0).coerceIn(0, 4))
+    var pictureMode by mutableStateOf(PictureMode.fromSaved(preferences.getString("picture_mode", null)))
         private set
     var pictureNotice by mutableStateOf<String?>(null)
         private set
@@ -63,7 +63,7 @@ class PlayerController(context: Context) {
                 .setMaxVideoFrameRate(30)
                 .build()
         }
-        if (brightnessLevel > 0) setVideoEffects(listOf(ProjectorBrightness(brightnessLevel * 0.03f)))
+        if (pictureMode != PictureMode.ORIGINAL) setVideoEffects(listOf(ProjectorBrightness(pictureMode)))
         addListener(audioFailureListener { audioUnavailable = it })
         addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -74,10 +74,10 @@ class PlayerController(context: Context) {
             override fun onPlayerError(error: PlaybackException) {
                 isBuffering = false
                 isTuning = false
-                if (brightnessLevel > 0 && error.errorCode in listOf(
+                if (pictureMode != PictureMode.ORIGINAL && error.errorCode in listOf(
                         PlaybackException.ERROR_CODE_VIDEO_FRAME_PROCESSING_FAILED,
                         PlaybackException.ERROR_CODE_VIDEO_FRAME_PROCESSOR_INIT_FAILED)) {
-                    setBrightness(0)
+                    setPictureMode(PictureMode.ORIGINAL)
                     pictureNotice = "Aclarado desactivado: el procesador gráfico no admite este efecto."
                     return
                 }
@@ -184,18 +184,17 @@ class PlayerController(context: Context) {
         playUrl(ApiConfig.seriesUrl(episodeId, ext), name, "", false)
 
     /** Reconfigure effects only while stopped, as required by Media3 1.2. */
-    fun setBrightness(level: Int) {
-        val next = level.coerceIn(0, 4)
-        if (next == brightnessLevel) return
+    fun setPictureMode(next: PictureMode) {
+        if (next == pictureMode) return
         val item = activePlayer.currentMediaItem
         val position = activePlayer.currentPosition
         val shouldPlay = activePlayer.playWhenReady
         activePlayer.stop()
-        brightnessLevel = next
-        preferences.edit().putInt("brightness", next).apply()
+        pictureMode = next
+        preferences.edit().putString("picture_mode", next.name).apply()
         pictureNotice = null
         activePlayer.setVideoEffects(
-            if (next == 0) emptyList() else listOf(ProjectorBrightness(next * 0.03f))
+            if (next == PictureMode.ORIGINAL) emptyList() else listOf(ProjectorBrightness(next))
         )
         if (item != null) {
             activePlayer.setMediaItem(item, if (isLive) C.TIME_UNSET else position)

@@ -28,12 +28,15 @@ Use the same network, channels and catalog before/after. Test a release APK for 
 ## Validation limits
 Local assembleDebug/lintDebug could not start: this environment cannot reach services.gradle.org to download Gradle. No device, FPS, startup or memory measurements have been obtained. Adaptive limits do not guarantee codec compatibility or compensate for an overloaded stream server. The full catalogs are still held in memory; server-side paging is a separate future improvement.
 
-## HY300 picture controls
-- The low-memory profile also activates when Android reports a HY300 model, preferring H.264/AAC when available (other compatible codecs remain eligible).
-- During playback press Menu, or OK on live TV, or click Imagen / brillo. The dialog is scrollable and works with DPAD.
-- SDR lift levels 0–4 are saved locally; start with 1. Zero bypasses the GPU effects pipeline. Changing levels briefly restarts playback at the VOD position / live edge.
-- The effect uses a GPU RGB matrix. HDR is left unchanged; there is no HDR-to-SDR conversion. Brightness can wash out blacks or highlights and must be evaluated on the device.
-- Frame processing errors automatically disable the lift and retry direct playback.
-- Android maximum window brightness is an optional request, restored when leaving playback. Firmware may ignore it; it does not control LED power.
-- Display settings shortcut uses Android's standard intent, with general settings as fallback. Projector-specific picture menus differ by firmware.
-- This is targeted compatibility work, not physical HY300 certification. Test every lift level with live/VOD, rapid zapping and paused video, and compare dropped frames to level zero.
+## HY300 picture modes
+- Low-memory profile activates by RAM or HY300 model name, preferring H.264/AAC.
+- Menu, OK on live TV, or the top button opens a scrollable DPAD-friendly selector.
+- Presets: Original, TV, Películas, Deportes, Vívido and Máximo brillo.
+- A single GPU RGB matrix combines gain, shadow lift and saturation. Original bypasses effects. No motion interpolation or CPU frame copies.
+- Maximum is the default when no picture-mode preference exists. Selection saves for future playback and restarts.
+- Maximum uses gain 1.30 / lift 0.18 / saturation 1.0 and requests Android window brightness 1.0. This is the highest app digital preset, not LED power control. It can clip highlights and wash out blacks.
+- Leaving playback restores original window brightness; other modes use system brightness.
+- HDR is unchanged by the SDR matrix; no tone mapping.
+- Changing presets re-prepares at VOD position or live edge, preserving pause/play intent. GPU processing errors disable presets and retry Original.
+- Device checks: grayscale ramp, dark/bright scenes, live/VOD, rapid zapping, preset persistence, pause/background/resume and dropped frames against Original.
+- Prior revision 452f63f passed builds/lint in Actions run 40047904384. Presets require a fresh build and physical HY300 validation.

@@ -45,6 +45,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.randytv.mobile.player.PictureMode
 import com.randytv.mobile.player.PlayerController
 import com.randytv.mobile.ui.components.CachedImage
 import com.randytv.mobile.ui.components.FocusGreen
@@ -56,13 +57,19 @@ import kotlinx.coroutines.launch
 fun PlayerScreen(playerController: PlayerController, onClose: () -> Unit) {
     val context = LocalContext.current
     var showPictureSettings by remember { mutableStateOf(false) }
-    var maxWindowBrightness by remember { mutableStateOf(false) }
     val activity = context as? Activity
     DisposableEffect(activity) {
         val originalBrightness = activity?.window?.attributes?.screenBrightness
         onDispose {
             if (activity != null && originalBrightness != null) {
                 activity.window.attributes = activity.window.attributes.apply { screenBrightness = originalBrightness }
+            }
+        }
+    }
+    LaunchedEffect(activity, playerController.pictureMode) {
+        activity?.let {
+            it.window.attributes = it.window.attributes.apply {
+                screenBrightness = if (playerController.pictureMode.maximumWindowBrightness) 1f else -1f
             }
         }
     }
@@ -137,7 +144,7 @@ fun PlayerScreen(playerController: PlayerController, onClose: () -> Unit) {
             TextButton(
                 onClick = { showPictureSettings = true },
                 modifier = Modifier.align(Alignment.TopCenter).background(Color(0xBB000000))
-            ) { Text("Imagen / brillo · Menú", color = Color.White) }
+            ) { Text("${playerController.pictureMode.label} · Menú", color = Color.White) }
             Row(modifier = Modifier.align(Alignment.TopStart).padding(16.dp).background(Color(0xAA000000), RoundedCornerShape(8.dp)).padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) { if (playerController.logo.isNotEmpty()) { CachedImage(url = playerController.logo, height = 32.dp, modifier = Modifier.size(32.dp).clip(RoundedCornerShape(6.dp))); Spacer(Modifier.width(8.dp)) }; Column { Text(playerController.title, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 200.dp)); if (playerController.isLive) Row(verticalAlignment = Alignment.CenterVertically) { Box(modifier = Modifier.size(5.dp).background(Color.Red, CircleShape)); Spacer(Modifier.width(4.dp)); Text("EN VIVO", fontSize = 9.sp, color = Color.Red, fontWeight = FontWeight.Bold) } } }
             if (!playerController.isTuning) { Box(modifier = Modifier.align(Alignment.TopEnd).padding(16.dp).size(36.dp).background(Color(0x80000000), CircleShape).clickable { onClose() }, contentAlignment = Alignment.Center) { Icon(Icons.Default.ArrowBack, null, tint = Color.White, modifier = Modifier.size(18.dp)) } }
 
@@ -175,25 +182,21 @@ fun PlayerScreen(playerController: PlayerController, onClose: () -> Unit) {
             title = { Text("Imagen · HY300") },
             text = {
                 Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Aclarar video SDR: ${playerController.brightnessLevel}/4")
-                    Text("0 conserva la reproducción directa. Los demás niveles aclaran sombras y pueden reducir el contraste o la fluidez.")
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { playerController.setBrightness(playerController.brightnessLevel - 1) },
-                            enabled = playerController.brightnessLevel > 0) { Text("−") }
-                        Button(onClick = { playerController.setBrightness(playerController.brightnessLevel + 1) },
-                            enabled = playerController.brightnessLevel < 4) { Text("+") }
-                        TextButton(onClick = { playerController.setBrightness(0) }) { Text("Original") }
-                    }
-                    Text("El ajuste puede causar una pausa breve. No aumenta la potencia de la lámpara ni corrige HDR.")
-                    TextButton(onClick = {
-                        maxWindowBrightness = !maxWindowBrightness
-                        activity?.let {
-                            it.window.attributes = it.window.attributes.apply {
-                                screenBrightness = if (maxWindowBrightness) 1f else -1f
+                    Text("Modo activo: ${playerController.pictureMode.label}")
+                    PictureMode.values().forEach { mode ->
+                        OutlinedButton(
+                            onClick = { playerController.setPictureMode(mode) },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(Modifier.fillMaxWidth()) {
+                                Text((if (mode == playerController.pictureMode) "✓ " else "") + mode.label)
+                                Text(mode.description, fontSize = 12.sp)
                             }
                         }
-                    }) { Text(if (maxWindowBrightness) "Brillo Android: máximo solicitado" else "Solicitar brillo Android máximo") }
-                    Text("El firmware del HY300 puede ignorar el brillo de Android.")
+                    }
+                    Text("Máximo brillo fuerza el aclarado digital más alto de la app y solicita brillo Android al 100% durante la reproducción.")
+                    Text("No aumenta la potencia del LED. El firmware puede ignorar el brillo Android. Los filtros se aplican a video SDR; HDR conserva su imagen original.")
+                    Text("La selección se guarda para TV, películas y series. Cambiar de modo puede causar una pausa breve.")
                     TextButton(onClick = {
                         try { context.startActivity(Intent(Settings.ACTION_DISPLAY_SETTINGS)) }
                         catch (_: android.content.ActivityNotFoundException) {
