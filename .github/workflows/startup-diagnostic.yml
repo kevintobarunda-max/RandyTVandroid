@@ -1,0 +1,55 @@
+name: Diagnose installed HY300 APK
+on:
+  push:
+    branches: [codex/android12-low-memory]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  startup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/download-artifact@v4
+        with:
+          name: RandyTV-HY300-instalar
+          path: installer
+          run-id: 40050741610
+          github-token: ${{ github.token }}
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 31
+          target: default
+          arch: x86_64
+          ram-size: 2048M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            mkdir -p diagnostics
+            adb shell svc wifi disable
+            adb shell svc data disable
+            adb install installer/RandyTV-HY300.apk
+            adb logcat -c
+            adb shell am start -W -n com.randytv.mobile.hy300/com.randytv.mobile.MainActivity
+            sleep 12
+            adb logcat -b crash -d > diagnostics/crash.txt
+            cat diagnostics/crash.txt
+            adb shell uiautomator dump /sdcard/window.xml
+            adb pull /sdcard/window.xml diagnostics/window.xml
+            adb exec-out screencap -p > diagnostics/startup.png
+            cat diagnostics/window.xml
+            adb shell pidof com.randytv.mobile.hy300
+            grep -q 'TV en Vivo' diagnostics/window.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: HY300-startup-diagnostics
+          path: diagnostics/
