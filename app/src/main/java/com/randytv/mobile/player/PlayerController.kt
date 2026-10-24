@@ -1,6 +1,8 @@
 package com.randytv.mobile.player
 
 import android.content.Context
+import android.os.Build
+import androidx.media3.common.MimeTypes
 import android.app.ActivityManager
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -21,7 +23,14 @@ import com.randytv.mobile.data.model.LiveStream
 import com.randytv.mobile.data.network.ApiConfig
 import kotlinx.coroutines.*
 
+@androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 class PlayerController(context: Context) {
+
+    private val preferences = context.applicationContext.getSharedPreferences("projector", Context.MODE_PRIVATE)
+    var brightnessLevel by mutableIntStateOf(preferences.getInt("brightness", 0).coerceIn(0, 4))
+        private set
+    var pictureNotice by mutableStateOf<String?>(null)
+        private set
 
     private val audioAttrs = AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build()
 
@@ -30,7 +39,7 @@ class PlayerController(context: Context) {
         .let { manager ->
             val info = ActivityManager.MemoryInfo()
             manager.getMemoryInfo(info)
-            manager.isLowRamDevice || info.totalMem <= 3L * 1024 * 1024 * 1024
+            Build.MODEL.contains("HY300", ignoreCase = true) || manager.isLowRamDevice || info.totalMem <= 3L * 1024 * 1024 * 1024
         }
     private val loadControl = DefaultLoadControl.Builder()
         .setBufferDurationsMs(5000, 15000, 1000, 2500)
@@ -47,11 +56,14 @@ class PlayerController(context: Context) {
         setHandleAudioBecomingNoisy(true)
         if (lowMemory) {
             trackSelectionParameters = trackSelectionParameters.buildUpon()
+                .setPreferredVideoMimeTypes(MimeTypes.VIDEO_H264)
+                .setPreferredAudioMimeTypes(MimeTypes.AUDIO_AAC)
                 .setMaxVideoSize(1280, 720)
                 .setMaxVideoBitrate(2_500_000)
                 .setMaxVideoFrameRate(30)
                 .build()
         }
+        if (brightnessLevel > 0) setVideoEffects(listOf(ProjectorBrightness(brightnessLevel * 0.03f)))
         addListener(audioFailureListener { audioUnavailable = it })
         addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -62,6 +74,13 @@ class PlayerController(context: Context) {
             override fun onPlayerError(error: PlaybackException) {
                 isBuffering = false
                 isTuning = false
+                if (brightnessLevel > 0 && error.errorCode in listOf(
+                        PlaybackException.ERROR_CODE_VIDEO_FRAME_PROCESSING_FAILED,
+                        PlaybackException.ERROR_CODE_VIDEO_FRAME_PROCESSOR_INIT_FAILED)) {
+                    setBrightness(0)
+                    pictureNotice = "Aclarado desactivado: el procesador gráfico no admite este efecto."
+                    return
+                }
                 playbackError = "No se pudo reproducir el contenido. Pulsa Reintentar."
             }
         })
@@ -163,6 +182,27 @@ class PlayerController(context: Context) {
 
     fun playSeries(episodeId: String, ext: String, name: String) =
         playUrl(ApiConfig.seriesUrl(episodeId, ext), name, "", false)
+
+    /** Reconfigure effects only while stopped, as required by Media3 1.2. */
+    fun setBrightness(level: Int) {
+        val next = level.coerceIn(0, 4)
+        if (next == brightnessLevel) return
+        val item = activePlayer.currentMediaItem
+        val position = activePlayer.currentPosition
+        val shouldPlay = activePlayer.playWhenReady
+        activePlayer.stop()
+        brightnessLevel = next
+        preferences.edit().putInt("brightness", next).apply()
+        pictureNotice = null
+        activePlayer.setVideoEffects(
+            if (next == 0) emptyList() else listOf(ProjectorBrightness(next * 0.03f))
+        )
+        if (item != null) {
+            activePlayer.setMediaItem(item, if (isLive) C.TIME_UNSET else position)
+            activePlayer.prepare()
+            activePlayer.playWhenReady = shouldPlay
+        }
+    }
 
     fun retry() {
         playbackError = null

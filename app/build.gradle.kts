@@ -59,6 +59,7 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer-dash:1.2.0")
     implementation("androidx.media3:media3-datasource-okhttp:1.2.0")
     implementation("androidx.media3:media3-ui:1.2.0")
+    implementation("androidx.media3:media3-effect:1.2.0")
     implementation("io.coil-kt:coil-compose:2.5.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.google.code.gson:gson:2.10.1")

@@ -1,7 +1,13 @@
 package com.randytv.mobile.ui.screens
 
+import android.app.Activity
+import android.content.Intent
+import android.provider.Settings
+import androidx.compose.ui.platform.LocalContext
 import android.view.KeyEvent
 import android.view.SurfaceView
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -48,6 +54,18 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun PlayerScreen(playerController: PlayerController, onClose: () -> Unit) {
+    val context = LocalContext.current
+    var showPictureSettings by remember { mutableStateOf(false) }
+    var maxWindowBrightness by remember { mutableStateOf(false) }
+    val activity = context as? Activity
+    DisposableEffect(activity) {
+        val originalBrightness = activity?.window?.attributes?.screenBrightness
+        onDispose {
+            if (activity != null && originalBrightness != null) {
+                activity.window.attributes = activity.window.attributes.apply { screenBrightness = originalBrightness }
+            }
+        }
+    }
     var uiVisible by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     var hideJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
@@ -61,6 +79,9 @@ fun PlayerScreen(playerController: PlayerController, onClose: () -> Unit) {
         }
     }
     LaunchedEffect(Unit) { mainFocus.requestFocus() }
+    LaunchedEffect(showPictureSettings) {
+        if (showPictureSettings) hideJob?.cancel()
+    }
     val player = playerController.activePlayer
     DisposableEffect(player) {
         onDispose { player.clearVideoSurface() }
@@ -79,11 +100,12 @@ fun PlayerScreen(playerController: PlayerController, onClose: () -> Unit) {
                 if (inBarMode) return@onKeyEvent false
                 if (event.type != KeyEventType.KeyDown) return@onKeyEvent true
                 when (event.key.nativeKeyCode) {
+                    KeyEvent.KEYCODE_MENU -> { showPictureSettings = true; true }
                     KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_CHANNEL_UP -> { if (playerController.isLive) { playerController.zapNext(); showUI() }; true }
                     KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_CHANNEL_DOWN -> { if (playerController.isLive) { playerController.zapPrev(); showUI() } else { inBarMode = true; uiVisible = true; hideJob?.cancel(); scope.launch { delay(150); firstBtnFocus.requestFocus() } }; true }
                     KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_REWIND -> { if (!playerController.isLive) playerController.jumpBackward(15); showUI(); true }
                     KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { if (!playerController.isLive) playerController.jumpForward(30); showUI(); true }
-                    KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> { if (!playerController.isLive) playerController.togglePause(); showUI(); true }
+                    KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> { if (!playerController.isLive) playerController.togglePause() else showPictureSettings = true; showUI(); true }
                     KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE -> { onClose(); true }
                     else -> { showUI(); true }
                 }
@@ -112,6 +134,10 @@ fun PlayerScreen(playerController: PlayerController, onClose: () -> Unit) {
         }
 
         if (uiVisible) {
+            TextButton(
+                onClick = { showPictureSettings = true },
+                modifier = Modifier.align(Alignment.TopCenter).background(Color(0xBB000000))
+            ) { Text("Imagen / brillo · Menú", color = Color.White) }
             Row(modifier = Modifier.align(Alignment.TopStart).padding(16.dp).background(Color(0xAA000000), RoundedCornerShape(8.dp)).padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) { if (playerController.logo.isNotEmpty()) { CachedImage(url = playerController.logo, height = 32.dp, modifier = Modifier.size(32.dp).clip(RoundedCornerShape(6.dp))); Spacer(Modifier.width(8.dp)) }; Column { Text(playerController.title, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 200.dp)); if (playerController.isLive) Row(verticalAlignment = Alignment.CenterVertically) { Box(modifier = Modifier.size(5.dp).background(Color.Red, CircleShape)); Spacer(Modifier.width(4.dp)); Text("EN VIVO", fontSize = 9.sp, color = Color.Red, fontWeight = FontWeight.Bold) } } }
             if (!playerController.isTuning) { Box(modifier = Modifier.align(Alignment.TopEnd).padding(16.dp).size(36.dp).background(Color(0x80000000), CircleShape).clickable { onClose() }, contentAlignment = Alignment.Center) { Icon(Icons.Default.ArrowBack, null, tint = Color.White, modifier = Modifier.size(18.dp)) } }
 
@@ -143,6 +169,45 @@ fun PlayerScreen(playerController: PlayerController, onClose: () -> Unit) {
             if (playerController.isLive) { Text("▲▼ Canal  |  ← Volver", fontSize = 10.sp, color = Color(0x55FFFFFF), modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 14.dp)) }
         }
     }
+    if (showPictureSettings) {
+        AlertDialog(
+            onDismissRequest = { showPictureSettings = false },
+            title = { Text("Imagen · HY300") },
+            text = {
+                Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Aclarar video SDR: ${playerController.brightnessLevel}/4")
+                    Text("0 conserva la reproducción directa. Los demás niveles aclaran sombras y pueden reducir el contraste o la fluidez.")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { playerController.setBrightness(playerController.brightnessLevel - 1) },
+                            enabled = playerController.brightnessLevel > 0) { Text("−") }
+                        Button(onClick = { playerController.setBrightness(playerController.brightnessLevel + 1) },
+                            enabled = playerController.brightnessLevel < 4) { Text("+") }
+                        TextButton(onClick = { playerController.setBrightness(0) }) { Text("Original") }
+                    }
+                    Text("El ajuste puede causar una pausa breve. No aumenta la potencia de la lámpara ni corrige HDR.")
+                    TextButton(onClick = {
+                        maxWindowBrightness = !maxWindowBrightness
+                        activity?.let {
+                            it.window.attributes = it.window.attributes.apply {
+                                screenBrightness = if (maxWindowBrightness) 1f else -1f
+                            }
+                        }
+                    }) { Text(if (maxWindowBrightness) "Brillo Android: máximo solicitado" else "Solicitar brillo Android máximo") }
+                    Text("El firmware del HY300 puede ignorar el brillo de Android.")
+                    TextButton(onClick = {
+                        try { context.startActivity(Intent(Settings.ACTION_DISPLAY_SETTINGS)) }
+                        catch (_: android.content.ActivityNotFoundException) {
+                            try { context.startActivity(Intent(Settings.ACTION_SETTINGS)) }
+                            catch (_: android.content.ActivityNotFoundException) { }
+                        }
+                    }) { Text("Abrir ajustes de pantalla") }
+                    playerController.pictureNotice?.let { Text(it) }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showPictureSettings = false }) { Text("Volver al video") } }
+        )
+    }
+
 }
 
 @Composable
