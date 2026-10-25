@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -162,6 +163,7 @@ fun ListScreen(type: ListType, showSimpsons: Boolean = false, repository: DataRe
     }
 }
 
+@Stable
 private data class CatalogResult<T>(
     val source: CatalogIndex<T>? = null, val category: String = "", val query: String = "",
     val rows: List<CatalogEntry<T>> = emptyList()
@@ -183,9 +185,15 @@ private fun <T> CatalogSection(
             extras.none { it.categoryId == selectedCat } &&
             mergedCategories.none { it.categoryId == selectedCat }) onCategory(ALL_CATEGORIES)
     }
-    val result by produceState(CatalogResult<T>(), index, selectedCat, query) {
-        if (query.isNotBlank()) delay(150)
-        value = CatalogResult(index, selectedCat, query, index.query(selectedCat, query, searchAll))
+    val result by produceState(CatalogResult<T>(), index, selectedCat, query, searchAll) {
+        val cached = index.immediate(selectedCat, query, searchAll)
+        if (cached != null) {
+            value = CatalogResult(index, selectedCat, query, cached)
+        } else {
+            // One frame coalesces key repeats; cached searches/categories have no delay.
+            delay(16)
+            value = CatalogResult(index, selectedCat, query, index.query(selectedCat, query, searchAll))
+        }
     }
     val busy = result.source !== index || result.category != selectedCat || result.query != query
     val gridState = rememberLazyGridState()
@@ -259,6 +267,19 @@ private fun <T> CatalogSection(
             BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
                 // Reserve space for captions and padding even on short landscape windows.
                 val artworkHeight = (maxHeight - 64.dp).coerceIn(56.dp, if (square) 80.dp else 138.dp)
+                CatalogGrid(result, gridState, square, artworkHeight, firstResultFocus,
+                    title, image, rating, onTap)
+            }
+        }
+    }
+}
+
+// Stable result identity lets Compose skip all visible cards while only the query changes.
+@Composable
+private fun <T> CatalogGrid(result: CatalogResult<T>, gridState: LazyGridState,
+    square: Boolean, artworkHeight: Dp, firstResultFocus: FocusRequester,
+    title: (T) -> String?, image: (T) -> String?, rating: (T) -> Double?, onTap: (T) -> Unit
+) {
                 LazyVerticalGrid(columns = GridCells.Adaptive(if (square) 96.dp else 112.dp),
                     state = gridState, modifier = Modifier.fillMaxSize().testTag("catalog_grid"),
                     contentPadding = PaddingValues(14.dp),
@@ -271,9 +292,6 @@ private fun <T> CatalogSection(
                                 Modifier.focusRequester(firstResultFocus) else Modifier) { onTap(entry.item) }
                     }
                 }
-            }
-        }
-    }
 }
 
 @Composable
@@ -291,6 +309,7 @@ private fun TVCatChip(name: String, selected: Boolean, onClick: () -> Unit) {
 @Composable
 private fun TVCard(name: String, imageUrl: String, square: Boolean, rating: Double?,
     modifier: Modifier = Modifier, artworkHeight: Dp = if (square) 80.dp else 138.dp, onClick: () -> Unit) {
+    val ratingLabel = remember(rating) { if (rating != null && rating > 0) String.format("%.1f", rating) else null }
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(modifier.width(if (square) artworkHeight else artworkHeight * (2f / 3f)).height(artworkHeight)
             .clip(RoundedCornerShape(8.dp)).background(androidx.compose.ui.graphics.Color(0xFF1E1E1E))
@@ -299,8 +318,8 @@ private fun TVCard(name: String, imageUrl: String, square: Boolean, rating: Doub
                 modifier = Modifier.fillMaxSize(),
                 contentScale = if (square) ContentScale.Fit else ContentScale.Crop,
                 targetWidthPx = 160, targetHeightPx = if (square) 160 else 240)
-            if (rating != null && rating > 0) {
-                Text(String.format("%.1f", rating), color = androidx.compose.ui.graphics.Color.Black,
+            if (ratingLabel != null) {
+                Text(ratingLabel, color = androidx.compose.ui.graphics.Color.Black,
                     fontSize = 9.sp, modifier = Modifier.align(Alignment.TopEnd).padding(3.dp)
                         .background(FocusGreen, RoundedCornerShape(3.dp)).padding(horizontal = 3.dp))
             }

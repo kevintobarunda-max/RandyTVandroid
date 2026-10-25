@@ -30,26 +30,71 @@ class CatalogIndex<T> private constructor(
     val entries: List<CatalogEntry<T>>,
     private val groups: Map<String, List<CatalogEntry<T>>>,
     val categoryCounts: Map<String, Int>,
-    private val dispatcher: CoroutineDispatcher
+    private val dispatcher: CoroutineDispatcher,
+    private val postings: Array<IntArray>? = null
 ) {
     fun count(category: String): Int = if (category == ALL_CATEGORIES) entries.size else groups[category]?.size ?: 0
     fun groupItems(category: String): List<T> = groups[category].orEmpty().map { it.item }
 
-    /** Empty input is O(1); text scans cached names off Main and cancels superseded work. */
-    suspend fun query(category: String, text: String, searchAll: Boolean = true): List<CatalogEntry<T>> =
-        withContext(dispatcher) {
-            val tokens = CatalogText.normalize(text).split(' ').filter { it.isNotEmpty() }
-            val source = if (category == ALL_CATEGORIES || (searchAll && tokens.isNotEmpty())) entries
-                else groups[category].orEmpty()
-            if (tokens.isEmpty()) return@withContext source
+    // At most eight small result sets; never retain another unbounded catalog copy.
+    private val cache = object : LinkedHashMap<String, List<CatalogEntry<T>>>(8, .75f, true) {}
+    private var cachedRows = 0
+    private fun cacheKey(category: String, normalized: String, searchAll: Boolean) =
+        "${if (searchAll) ALL_CATEGORIES else category}\u0000$normalized"
+
+    fun immediate(category: String, text: String, searchAll: Boolean = true): List<CatalogEntry<T>>? {
+        val normalized = CatalogText.normalize(text)
+        if (normalized.isEmpty()) return if (category == ALL_CATEGORIES) entries else groups[category].orEmpty()
+        return synchronized(cache) { cache[cacheKey(category, normalized, searchAll)] }
+    }
+
+    /** Rare bigram candidates, verified against the full name: collisions cannot lose titles. */
+    suspend fun query(category: String, text: String, searchAll: Boolean = true): List<CatalogEntry<T>> {
+        immediate(category, text, searchAll)?.let { return it }
+        return withContext(dispatcher) {
+            val normalized = CatalogText.normalize(text)
+            val tokens = normalized.split(' ').filter { it.isNotEmpty() }
             val context = currentCoroutineContext()
+            var candidates: IntArray? = null
+            postings?.let { buckets ->
+                for (token in tokens) for (i in 0 until token.length - 1) {
+                    val ids = buckets[bucket(token[i], token[i + 1])]
+                    if (candidates == null || ids.size < candidates!!.size) candidates = ids
+                }
+            }
             val matches = ArrayList<CatalogEntry<T>>()
-            source.forEachIndexed { index, entry ->
-                if (index % 128 == 0) context.ensureActive()
-                if (tokens.all { entry.searchName.contains(it) }) matches.add(entry)
+            val ids = candidates
+            if (ids != null) {
+                // Membership by row ID also supports synthetic live channel groups.
+                val allowed = if (!searchAll && category != ALL_CATEGORIES)
+                    groups[category].orEmpty().mapTo(HashSet()) { it.rowKey } else null
+                ids.forEachIndexed { i, id ->
+                    if (i % 128 == 0) context.ensureActive()
+                    val entry = entries[id]
+                    if ((allowed == null || id in allowed) && tokens.all { entry.searchName.contains(it) }) matches.add(entry)
+                }
+            } else {
+                val source = if (searchAll || category == ALL_CATEGORIES) entries else groups[category].orEmpty()
+                source.forEachIndexed { i, entry ->
+                    if (i % 128 == 0) context.ensureActive()
+                    if (tokens.all { entry.searchName.contains(it) }) matches.add(entry)
+                }
+            }
+            context.ensureActive()
+            if (matches.size <= 32768) synchronized(cache) {
+                val key = cacheKey(category, normalized, searchAll)
+                cachedRows -= cache.remove(key)?.size ?: 0
+                cache[key] = matches
+                cachedRows += matches.size
+                while (cache.size > 8 || cachedRows > 32768) {
+                    val oldest = cache.entries.iterator()
+                    cachedRows -= oldest.next().value.size
+                    oldest.remove()
+                }
             }
             matches
         }
+    }
 
     /** Keep all server categories and synthesize labels for orphaned category IDs. */
     fun categories(serverCategories: List<Category>): List<Category> {
@@ -67,6 +112,43 @@ class CatalogIndex<T> private constructor(
     }
 
     companion object {
+        private const val BUCKETS = 4096
+        private fun bucket(a: Char, b: Char): Int = ((a.code * 31) xor b.code) and (BUCKETS - 1)
+
+        // Primitive arrays avoid a String/boxed-Integer object for every name fragment.
+        // Bound auxiliary storage to 8 MiB; larger catalogs retain the exact scan fallback.
+        private suspend fun <T> buildPostings(rows: List<CatalogEntry<T>>): Array<IntArray>? {
+            val context = currentCoroutineContext()
+            val counts = IntArray(BUCKETS)
+            val seen = IntArray(BUCKETS) { -1 }
+            var total = 0
+            rows.forEachIndexed { id, row ->
+                if (id % 128 == 0) context.ensureActive()
+                for (i in 0 until row.searchName.length - 1) {
+                    val key = bucket(row.searchName[i], row.searchName[i + 1])
+                    if (seen[key] != id) {
+                        seen[key] = id
+                        counts[key]++
+                        if (++total > 2_000_000) return null
+                    }
+                }
+            }
+            val result = Array(BUCKETS) { IntArray(counts[it]) }
+            counts.fill(0)
+            seen.fill(-1)
+            rows.forEachIndexed { id, row ->
+                if (id % 128 == 0) context.ensureActive()
+                for (i in 0 until row.searchName.length - 1) {
+                    val key = bucket(row.searchName[i], row.searchName[i + 1])
+                    if (seen[key] != id) {
+                        seen[key] = id
+                        result[key][counts[key]++] = id
+                    }
+                }
+            }
+            return result
+        }
+
         fun <T> empty(dispatcher: CoroutineDispatcher = Dispatchers.Default): CatalogIndex<T> =
             CatalogIndex(emptyList(), emptyList(), emptyMap(), emptyMap(), dispatcher)
 
@@ -92,7 +174,7 @@ class CatalogIndex<T> private constructor(
                     if (predicate(item)) groups.getOrPut(key) { ArrayList() }.add(entry)
                 }
             }
-            CatalogIndex(items, rows, groups, counts, dispatcher)
+            CatalogIndex(items, rows, groups, counts, dispatcher, buildPostings(rows))
         }
     }
 }

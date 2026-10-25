@@ -40,6 +40,8 @@ jobs:
           fi
           ffmpeg -hide_banner -loglevel error -f lavfi -i "testsrc2=size=320x180:rate=24:duration=90" -c:v libx264 -preset ultrafast -crf 35 -g 24 -profile:v baseline -level 3.0 -pix_fmt yuv420p -an -movflags +faststart app/src/androidTest/assets/seek-test.mp4
       - run: gradle :app:testDebugUnitTest :app:assembleDebug :app:assembleProjector :app:assembleDebugAndroidTest --no-daemon
+      - name: Search benchmark result
+        run: find app/build/test-results -name 'TEST-*.xml' -exec grep 'CATALOG_BENCHMARK' {} +
       - name: Verify HY300 installer
         shell: bash
         run: |
@@ -54,8 +56,8 @@ jobs:
             exit 1
           fi
           mkdir -p installer
-          cp "$apk" installer/RandyTV-HY300-1.3.0.apk
-          sha256sum installer/RandyTV-HY300-1.3.0.apk > installer/SHA256.txt
+          cp "$apk" installer/RandyTV-HY300-1.3.1.apk
+          sha256sum installer/RandyTV-HY300-1.3.1.apk > installer/SHA256.txt
       - uses: actions/upload-artifact@v4
         with:
           name: HY300-seek-test-apks
@@ -118,8 +120,8 @@ jobs:
           disable-animations: true
           script: |
             adb install previous/RandyTV-HY300.apk
-            adb install -r installer/RandyTV-HY300-1.3.0.apk
-            adb install -r installer/RandyTV-HY300-1.3.0.apk
+            adb install -r installer/RandyTV-HY300-1.3.1.apk
+            adb install -r installer/RandyTV-HY300-1.3.1.apk
             adb shell pm path com.randytv.mobile.hy300
             mkdir -p startup
             adb shell svc wifi disable
