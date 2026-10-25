@@ -34,6 +34,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.randytv.mobile.data.catalog.*
@@ -249,20 +250,26 @@ private fun <T> CatalogSection(
         }
         if (!busy && !loading && result.rows.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(if (query.isNotBlank()) "No se encontraron títulos con ese nombre."
+                Text(if (error != null) "No hay títulos descargados. Pulsa Reintentar."
+                    else if (query.isNotBlank()) "No se encontraron títulos con ese nombre."
                     else "El servidor no devolvió títulos para esta selección.",
                     color = androidx.compose.ui.graphics.Color.LightGray)
             }
         } else {
-            LazyVerticalGrid(columns = GridCells.Adaptive(if (square) 96.dp else 112.dp),
-                state = gridState, modifier = Modifier.weight(1f).testTag("catalog_grid"),
-                contentPadding = PaddingValues(14.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                items(result.rows, key = { it.rowKey }, contentType = { if (square) "channel" else "poster" }) { entry ->
-                    TVCard(title(entry.item).orEmpty(), image(entry.item).orEmpty(), square, rating(entry.item),
-                        modifier = if (entry.rowKey == result.rows.firstOrNull()?.rowKey)
-                            Modifier.focusRequester(firstResultFocus) else Modifier) { onTap(entry.item) }
+            BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+                // Reserve space for captions and padding even on short landscape windows.
+                val artworkHeight = (maxHeight - 64.dp).coerceIn(56.dp, if (square) 80.dp else 138.dp)
+                LazyVerticalGrid(columns = GridCells.Adaptive(if (square) 96.dp else 112.dp),
+                    state = gridState, modifier = Modifier.fillMaxSize().testTag("catalog_grid"),
+                    contentPadding = PaddingValues(14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    items(result.rows, key = { it.rowKey }, contentType = { if (square) "channel" else "poster" }) { entry ->
+                        TVCard(title(entry.item).orEmpty().ifBlank { "Título sin nombre" },
+                            image(entry.item).orEmpty(), square, rating(entry.item), artworkHeight = artworkHeight,
+                            modifier = if (entry.rowKey == result.rows.firstOrNull()?.rowKey)
+                                Modifier.focusRequester(firstResultFocus) else Modifier) { onTap(entry.item) }
+                    }
                 }
             }
         }
@@ -283,12 +290,12 @@ private fun TVCatChip(name: String, selected: Boolean, onClick: () -> Unit) {
 
 @Composable
 private fun TVCard(name: String, imageUrl: String, square: Boolean, rating: Double?,
-    modifier: Modifier = Modifier, onClick: () -> Unit) {
+    modifier: Modifier = Modifier, artworkHeight: Dp = if (square) 80.dp else 138.dp, onClick: () -> Unit) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(modifier.width(if (square) 80.dp else 92.dp).aspectRatio(if (square) 1f else 2f / 3f)
+        Box(modifier.width(if (square) artworkHeight else artworkHeight * (2f / 3f)).height(artworkHeight)
             .clip(RoundedCornerShape(8.dp)).background(androidx.compose.ui.graphics.Color(0xFF1E1E1E))
             .semantics { contentDescription = name }.tvFocusable().clickable(onClick = onClick)) {
-            CachedImage(imageUrl, height = if (square) 80.dp else 138.dp,
+            CachedImage(imageUrl, height = artworkHeight,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = if (square) ContentScale.Fit else ContentScale.Crop,
                 targetWidthPx = 160, targetHeightPx = if (square) 160 else 240)

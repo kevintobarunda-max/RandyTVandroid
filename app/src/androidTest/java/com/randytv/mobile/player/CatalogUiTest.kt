@@ -52,7 +52,12 @@ class CatalogUiTest {
             compose.waitUntil(15000) {
                 compose.onAllNodesWithText("El Señor de los Anillos").fetchSemanticsNodes().isNotEmpty()
             }
-            compose.onNodeWithText("El Señor de los Anillos").assertIsDisplayed()
+            compose.waitUntil(15000) {
+                try {
+                    compose.onNodeWithText("El Señor de los Anillos").assertIsDisplayed()
+                    true
+                } catch (_: AssertionError) { false }
+            }
             compose.onNodeWithText("En todas las películas", substring = true).assertExists()
             compose.onNodeWithTag("catalog_search").performTextReplacement("noexiste987")
             compose.onNodeWithTag("catalog_search").performTextReplacement("ANILLOS")
@@ -60,7 +65,12 @@ class CatalogUiTest {
             compose.waitUntil(10000) {
                 compose.onAllNodesWithText("1 título").fetchSemanticsNodes().isNotEmpty()
             }
-            compose.onNodeWithText("El Señor de los Anillos").assertIsDisplayed()
+            compose.waitUntil(15000) {
+                try {
+                    compose.onNodeWithText("El Señor de los Anillos").assertIsDisplayed()
+                    true
+                } catch (_: AssertionError) { false }
+            }
             compose.onNodeWithContentDescription("Cerrar búsqueda").performClick()
             compose.waitUntil(10000) {
                 compose.onAllNodesWithText("140 títulos").fetchSemanticsNodes().isNotEmpty()
