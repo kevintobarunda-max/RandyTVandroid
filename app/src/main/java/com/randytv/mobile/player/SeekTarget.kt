@@ -8,7 +8,7 @@ class SeekTarget {
     fun relative(currentMs: Long, deltaMs: Long, durationMs: Long): Long? {
         if (durationMs <= 0) return null
         val base = pendingMs ?: currentMs
-        val limit = (durationMs - 5000).coerceAtLeast(0)
+        val limit = (durationMs - 1000).coerceAtLeast(0)
         pendingMs = (base.coerceIn(0, limit) + deltaMs).coerceIn(0, limit)
         return pendingMs
     }
@@ -16,7 +16,7 @@ class SeekTarget {
     fun fraction(fraction: Float, durationMs: Long): Long? {
         if (durationMs <= 0 || !fraction.isFinite()) return null
         pendingMs = (fraction.coerceIn(0f, 1f).toDouble() * durationMs).toLong()
-            .coerceIn(0, (durationMs - 5000).coerceAtLeast(0))
+            .coerceIn(0, (durationMs - 1000).coerceAtLeast(0))
         return pendingMs
     }
 
