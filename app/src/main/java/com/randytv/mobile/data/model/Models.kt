@@ -1,13 +1,16 @@
 package com.randytv.mobile.data.model
 
 import com.google.gson.annotations.SerializedName
+import androidx.compose.runtime.Immutable
 
+@Immutable
 data class Category(
     @SerializedName("category_id") val categoryId: String = "",
     @SerializedName("category_name") val categoryName: String = "",
     @SerializedName("parent_id") val parentId: Int = 0
 )
 
+@Immutable
 data class LiveStream(
     @SerializedName("num") val num: Int = 0,
     @SerializedName("name") val name: String = "",
@@ -23,6 +26,7 @@ data class LiveStream(
     @SerializedName("tv_archive_duration") val tvArchiveDuration: Int = 0
 )
 
+@Immutable
 data class VodStream(
     @SerializedName("num") val num: Int = 0,
     @SerializedName("name") val name: String = "",
@@ -48,9 +52,13 @@ data class VodStream(
         rating5Based?.toDoubleOrNull()?.let { return it * 2 }
         return null
     }
-    fun getImageUrl(): String = streamIcon.ifEmpty { cover ?: "" }
+    fun getImageUrl(): String {
+        val icon: String? = streamIcon
+        return icon.orEmpty().ifEmpty { cover.orEmpty() }
+    }
 }
 
+@Immutable
 data class SeriesItem(
     @SerializedName("num") val num: Int = 0,
     @SerializedName("name") val name: String = "",
@@ -71,7 +79,10 @@ data class SeriesItem(
         rating5Based?.toDoubleOrNull()?.let { return it * 2 }
         return null
     }
-    fun getImageUrl(): String = cover.ifEmpty { streamIcon ?: "" }
+    fun getImageUrl(): String {
+        val image: String? = cover
+        return image.orEmpty().ifEmpty { streamIcon.orEmpty() }
+    }
 }
 
 data class SeriesInfoResponse(

@@ -2,5 +2,7 @@
     <application>
         <activity android:name="com.randytv.mobile.player.SeekTestActivity"
             android:exported="false" android:screenOrientation="landscape" />
+        <activity android:name="com.randytv.mobile.player.CatalogTestActivity"
+            android:exported="false" android:screenOrientation="landscape" />
     </application>
 </manifest>

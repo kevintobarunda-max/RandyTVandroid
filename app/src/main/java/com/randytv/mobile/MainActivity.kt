@@ -61,7 +61,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun RandyTVApp(playerController: PlayerController, repository: DataRepository) {
-    var currentScreen by remember { mutableStateOf("splash") }
+    var currentScreen by remember { mutableStateOf("home") }
     var showSimpsons by remember { mutableStateOf(false) }
     var selectedVod by remember { mutableStateOf<VodStream?>(null) }
     var selectedSeries by remember { mutableStateOf<SeriesItem?>(null) }
@@ -76,8 +76,7 @@ fun RandyTVApp(playerController: PlayerController, repository: DataRepository) {
         }
     }
 
-    LaunchedEffect(repository.loadDone) { if (repository.loadDone) currentScreen = "home" }
-    LaunchedEffect(Unit) { delay(8000); if (currentScreen == "splash") currentScreen = "home" }
+    val catalogState = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
 
     when (currentScreen) {
         "splash" -> SplashScreen(progress = repository.loadProgress)
@@ -89,16 +88,16 @@ fun RandyTVApp(playerController: PlayerController, repository: DataRepository) {
             statusMessage = repository.loadError,
             onRetry = { repository.loadAll() }
         )
-        "live" -> ListScreen(type = ListType.LIVE, showSimpsons = showSimpsons, repository = repository,
+        "live" -> catalogState.SaveableStateProvider("live:$showSimpsons") { ListScreen(type = ListType.LIVE, showSimpsons = showSimpsons, repository = repository,
             onHome = { currentScreen = "home"; showSimpsons = false },
             onTapLive = { stream ->
                 // Determinar lista para zapping: si es canal 2MB, usar lista 2MB
                 val channelList = if (is2MBChannel(stream)) {
-                    get2MBList(repository.liveStreams)
+                    repository.liveIndex.groupItems(com.randytv.mobile.data.catalog.LOW_BITRATE)
                 } else if (showSimpsons) {
                     repository.simpsonsChannels
                 } else {
-                    repository.liveStreams.filter { it.categoryId == stream.categoryId }
+                    repository.liveIndex.groupItems(stream.categoryId.orEmpty())
                 }
 
                 playerController.channels = channelList
@@ -109,13 +108,13 @@ fun RandyTVApp(playerController: PlayerController, repository: DataRepository) {
                 playerController.playLive(stream.streamId.toString(), stream.name, stream.streamIcon)
                 previousScreen = "live"
                 currentScreen = "player"
-            }, onTapVod = {}, onTapSeries = {})
-        "vod" -> ListScreen(type = ListType.VOD, repository = repository,
+            }, onTapVod = {}, onTapSeries = {}) }
+        "vod" -> catalogState.SaveableStateProvider("vod") { ListScreen(type = ListType.VOD, repository = repository,
             onHome = { currentScreen = "home" }, onTapLive = {},
-            onTapVod = { stream -> selectedVod = stream; previousScreen = "vod"; currentScreen = "vodDetail" }, onTapSeries = {})
-        "series" -> ListScreen(type = ListType.SERIES, repository = repository,
+            onTapVod = { stream -> selectedVod = stream; previousScreen = "vod"; currentScreen = "vodDetail" }, onTapSeries = {}) }
+        "series" -> catalogState.SaveableStateProvider("series") { ListScreen(type = ListType.SERIES, repository = repository,
             onHome = { currentScreen = "home" }, onTapLive = {}, onTapVod = {},
-            onTapSeries = { series -> selectedSeries = series; previousScreen = "series"; currentScreen = "seriesDetail" })
+            onTapSeries = { series -> selectedSeries = series; previousScreen = "series"; currentScreen = "seriesDetail" }) }
         "vodDetail" -> selectedVod?.let { vod -> VodDetailScreen(stream = vod, onBack = { currentScreen = "vod" },
             onPlay = { playerController.playVOD(it.streamId.toString(), it.containerExtension, it.name); previousScreen = "vodDetail"; currentScreen = "player" }) }
         "seriesDetail" -> selectedSeries?.let { series -> SeriesDetailScreen(series = series, repository = repository, onBack = { currentScreen = "series" },

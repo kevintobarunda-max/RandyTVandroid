@@ -55,3 +55,15 @@ A separate signed, non-debuggable projector build uses com.randytv.mobile.hy300 
 - Tests do not measure provider-network latency or physical HY300 frame rate.
 
 - Media3 moves from 1.2.0 to 1.4.1 (compile SDK 34 / minimum 19 supported upstream), including upstream video-effect flush fixes associated with androidx/media#1139 and #1166. The old engine reproduced paused indefinite buffering after repeated seeks even with an empty effect list. End targets retain a one-second margin and choose the previous sync point in the final five seconds. The instrumentation regression checks the engine behavior with a real video surface.
+
+## 1.3.0 catalog and search
+- Removes the 100-title movie/series cap and broad name/category exclusions. All provider entries remain visible, including orphan categories and duplicate IDs (distinct stable row keys).
+- All tab and per-category counts reflect downloaded data. Index order follows the provider instead of sorting repeatedly by rating.
+- Builds normalized names and category groups once on Default. Queries run on Default, cancel superseded work and debounce non-empty input by 150 ms.
+- Search covers the complete downloaded movie or series catalog, ignoring accents/case and matching all typed words across categories.
+- Independent load/retry/error state for TV/movies/series. Large downloads serialize; small category calls may overlap. Refresh failure retains the previous index.
+- Home opens immediately; completion never interrupts navigation. Saveable state retains category/query/grid position across detail navigation.
+- Focus uses a single border, no scaling/glow layers. Posters decode at 160x240; episode rows are lazy.
+- Regression tests cover complete counts beyond 100, unknown/blank categories, formerly excluded names, duplicate IDs, null metadata, 15k matches, independent failures and retained data on failed refresh.
+- Android UI test browses movie 140 and finds an accented title in another category via the search icon. CI also checks upgrading the exact 1.2 APK, startup and seeking.
+- Counts describe server-returned entries. Client code cannot create titles absent from the response; physical HY300 FPS is not measured.
