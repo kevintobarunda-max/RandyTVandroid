@@ -32,6 +32,10 @@ jobs:
           if [ ! -f .ci-signing/hy300-development.keystore ]; then
             keytool -genkeypair -keystore .ci-signing/hy300-development.keystore -storepass android -keypass android -alias hy300development -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=RandyTV HY300 Development"
           fi
+          if ! command -v ffmpeg >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y ffmpeg
+          fi
           ffmpeg -hide_banner -loglevel error -f lavfi -i "testsrc2=size=320x180:rate=24:duration=90" -c:v libx264 -preset ultrafast -crf 35 -g 24 -pix_fmt yuv420p -an -movflags +faststart app/src/androidTest/assets/seek-test.mp4
       - run: gradle :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease :app:assembleProjector :app:assembleDebugAndroidTest --no-daemon
       - name: Verify HY300 installer
