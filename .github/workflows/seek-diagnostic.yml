@@ -1,8 +1,6 @@
 name: Inspect seek playback state
 on:
-  push:
-    branches: [codex/android12-low-memory]
-    paths: [.github/workflows/seek-diagnostic.yml]
+  workflow_dispatch:
 permissions:
   contents: read
   actions: read

@@ -53,3 +53,5 @@ A separate signed, non-debuggable projector build uses com.randytv.mobile.hy300 
 - PlayerView now implements actual fit/fill and forced 16:9/4:3 presentation; choosing a menu item selects that aspect directly.
 - Unit tests cover accumulation, reversal, boundaries, invalid input, cancellation and acceleration. Android instrumentation uses a generated 90-second H.264 fixture to check one seek per burst, start/end clamping and paused-state preservation.
 - Tests do not measure provider-network latency or physical HY300 frame rate.
+
+- Near EOF the target leaves five seconds available and uses the preceding sync point. An Android 12 regression reproduced paused buffering at 88/90 s without a player error; this guard avoids requesting that undersized final segment. Short clips under five seconds clamp to their start. Real sync-point precision depends on the source.

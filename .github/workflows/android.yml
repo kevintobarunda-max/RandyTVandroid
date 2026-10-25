@@ -139,6 +139,8 @@ jobs:
             adb install seek-apks/debug/app-debug.apk
             adb install seek-apks/androidTest/debug/app-debug-androidTest.apk
             adb shell am instrument -w -e class com.randytv.mobile.player.SeekPlaybackTest com.randytv.mobile.test/androidx.test.runner.AndroidJUnitRunner | tee startup/seek-test.txt
+            adb logcat -d -s System.out:I ExoPlayerImplInternal:E > startup/seek-logcat.txt
+            cat startup/seek-logcat.txt
             grep -q 'OK (1 test)' startup/seek-test.txt
       - uses: actions/upload-artifact@v4
         if: always()

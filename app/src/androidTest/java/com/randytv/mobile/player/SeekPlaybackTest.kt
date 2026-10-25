@@ -78,7 +78,7 @@ class SeekPlaybackTest {
             }
             await("Seeking to the end should leave the player before EOF") {
                 val player = controller.activePlayer
-                player.currentPosition >= player.duration - 5000 &&
+                player.currentPosition >= player.duration - 6000 &&
                     player.currentPosition < player.duration &&
                     player.playbackState == Player.STATE_READY
             }

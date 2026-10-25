@@ -18,8 +18,8 @@ class SeekTargetTest {
     @Test fun clampsBeforeStartAndAvoidsEndOfFile() {
         val seek = SeekTarget()
         assertEquals(0L, seek.relative(1000, -30000, 90000))
-        assertEquals(88000L, seek.relative(1000, 500000, 90000))
-        assertEquals(88000L, seek.fraction(1f, 90000))
+        assertEquals(85000L, seek.relative(1000, 500000, 90000))
+        assertEquals(85000L, seek.fraction(1f, 90000))
     }
     @Test fun unknownDurationAndNonFiniteInputDoNotProduceASeek() {
         val seek = SeekTarget()

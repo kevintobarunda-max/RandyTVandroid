@@ -270,6 +270,10 @@ class PlayerController(context: Context) {
         seekJob = null
         val targetMs = seekTarget.take() ?: return
         if (!isLive && activePlayer.isCurrentMediaItemSeekable) {
+            activePlayer.setSeekParameters(
+                if (targetMs >= activePlayer.duration - 5000) SeekParameters.PREVIOUS_SYNC
+                else SeekParameters.CLOSEST_SYNC
+            )
             activePlayer.seekTo(targetMs)
             isSeeking = activePlayer.playbackState == Player.STATE_BUFFERING
             seekMessage = null
