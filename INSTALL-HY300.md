@@ -9,3 +9,7 @@ El instalador es un APK único, firmado para pruebas personales y optimizado con
 CI verifica la firma, paquete y banderas testOnly/debuggable, y realiza instalación y reinstalación en un emulador Android 12.
 La identidad de firma de desarrollo se conserva en caché de Actions. La caché puede caducar: no sustituye una clave de producción custodiada y futuras publicaciones deben usar una firma de distribución permanente.
 Si todavía aparece App no instalada, copia el mensaje completo o el código obtenido con adb install RandyTV-HY300.apk; el mensaje genérico no permite distinguir espacio insuficiente, restricciones del firmware, corrupción u otros errores.
+
+## Version 1.2.0
+Development signing now uses an explicit keystore file at .ci-signing/hy300-development.keystore, retained in Actions cache. It is a new identity: uninstall the earlier HY300 build once before installing 1.2.0. This does not affect the original Randy TV app.
+For a local projector build, generate the same development alias using keytool (password android) or supply your own development keystore at that path. A permanent production key must be stored securely for distribution; Actions cache can expire.

@@ -33,3 +33,6 @@ google-services.json
 # Android Profiling
 *.hprof
 .DS_Store
+
+# Local/CI development signing key must never be committed.
+.ci-signing/

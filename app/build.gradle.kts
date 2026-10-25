@@ -11,9 +11,19 @@ android {
         applicationId = "com.randytv.mobile"
         minSdk = 21
         targetSdk = 34
-        versionCode = 3
-        versionName = "1.1.1"
+        versionCode = 4
+        versionName = "1.2.0"
         manifestPlaceholders["appLabel"] = "Randy TV"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        create("hy300Development") {
+            storeFile = rootProject.file(".ci-signing/hy300-development.keystore")
+            storePassword = "android"
+            keyAlias = "hy300development"
+            keyPassword = "android"
+        }
     }
 
     buildTypes {
@@ -24,7 +34,7 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             isDebuggable = false
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("hy300Development")
             matchingFallbacks += listOf("release")
             manifestPlaceholders["appLabel"] = "Randy TV HY300"
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
@@ -60,6 +70,8 @@ android {
 
 dependencies {
     testImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test:runner:1.5.2")
+    androidTestImplementation("androidx.test.ext:junit:1.1.5")
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.6.2")
     implementation("androidx.activity:activity-compose:1.8.1")

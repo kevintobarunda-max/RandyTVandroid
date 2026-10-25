@@ -5,7 +5,9 @@ import android.content.Intent
 import android.provider.Settings
 import androidx.compose.ui.platform.LocalContext
 import android.view.KeyEvent
-import android.view.SurfaceView
+import androidx.media3.ui.PlayerView
+import androidx.media3.ui.AspectRatioFrameLayout
+import android.os.SystemClock
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
@@ -53,6 +55,7 @@ import com.randytv.mobile.ui.components.FocusGlow
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+@androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 @Composable
 fun PlayerScreen(playerController: PlayerController, onClose: () -> Unit) {
     val context = LocalContext.current
@@ -78,11 +81,15 @@ fun PlayerScreen(playerController: PlayerController, onClose: () -> Unit) {
     var hideJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     val mainFocus = remember { FocusRequester() }
     val firstBtnFocus = remember { FocusRequester() }
+    var heldSince by remember { mutableStateOf(0L) }
+    var lastSeekKey by remember { mutableIntStateOf(-1) }
+    var lastSeekEvent by remember { mutableStateOf(0L) }
+    var sliderFraction by remember { mutableStateOf<Float?>(null) }
     var inBarMode by remember { mutableStateOf(false) }
     LaunchedEffect(uiVisible, playerController.isLive) {
         while (uiVisible && !playerController.isLive) {
             playerController.updateProgress()
-            delay(1000)
+            delay(500)
         }
     }
     LaunchedEffect(Unit) { mainFocus.requestFocus() }
@@ -90,28 +97,60 @@ fun PlayerScreen(playerController: PlayerController, onClose: () -> Unit) {
         if (showPictureSettings) hideJob?.cancel()
     }
     val player = playerController.activePlayer
-    DisposableEffect(player) {
-        onDispose { player.clearVideoSurface() }
+    val nativeView = remember(context, player) {
+        PlayerView(context).apply { useController = false; this.player = player }
+    }
+    DisposableEffect(player, nativeView) {
+        onDispose { playerController.cancelPendingSeek(); nativeView.player = null }
     }
 
     fun showUI() { uiVisible = true; hideJob?.cancel(); hideJob = scope.launch { delay(if (inBarMode) 20000 else 4000); uiVisible = false; inBarMode = false } }
     LaunchedEffect(Unit) { showUI() }
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
-        AndroidView(factory = { ctx -> SurfaceView(ctx).also { playerController.activePlayer.setVideoSurfaceView(it) } }, update = { sv -> playerController.activePlayer.setVideoSurfaceView(sv) }, modifier = Modifier.fillMaxSize())
+        BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            val ratio = when (playerController.aspectMode) { 1 -> 16f / 9f; 2 -> 4f / 3f; else -> null }
+            val videoModifier = if (ratio == null) Modifier.fillMaxSize() else {
+                val width = minOf(maxWidth, maxHeight * ratio)
+                Modifier.size(width, width / ratio)
+            }
+            AndroidView(factory = { nativeView }, update = {
+                it.resizeMode = if (playerController.aspectMode == 0)
+                    AspectRatioFrameLayout.RESIZE_MODE_FIT else AspectRatioFrameLayout.RESIZE_MODE_FILL
+            }, modifier = videoModifier)
+        }
 
         // Zona principal
         Box(modifier = Modifier.fillMaxSize()
             .then(if (!inBarMode) Modifier.focusRequester(mainFocus).focusable() else Modifier)
             .onKeyEvent { event ->
                 if (inBarMode) return@onKeyEvent false
+                val code = event.key.nativeKeyCode
+                val seekKey = code in listOf(KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT,
+                    KeyEvent.KEYCODE_MEDIA_REWIND, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD)
+                if (event.type == KeyEventType.KeyUp && seekKey) {
+                    playerController.commitSeek()
+                    lastSeekKey = -1
+                    return@onKeyEvent true
+                }
                 if (event.type != KeyEventType.KeyDown) return@onKeyEvent true
+                if (!playerController.isLive && seekKey) {
+                    val now = SystemClock.uptimeMillis()
+                    if (lastSeekKey != code) { heldSince = now; lastSeekEvent = 0L; lastSeekKey = code }
+                    if (now - lastSeekEvent >= 160) {
+                        playerController.remoteSeek(code == KeyEvent.KEYCODE_DPAD_RIGHT ||
+                            code == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD, now - heldSince)
+                        lastSeekEvent = now
+                    }
+                    showUI()
+                    return@onKeyEvent true
+                }
                 when (event.key.nativeKeyCode) {
                     KeyEvent.KEYCODE_MENU -> { showPictureSettings = true; true }
                     KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_CHANNEL_UP -> { if (playerController.isLive) { playerController.zapNext(); showUI() }; true }
                     KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_CHANNEL_DOWN -> { if (playerController.isLive) { playerController.zapPrev(); showUI() } else { inBarMode = true; uiVisible = true; hideJob?.cancel(); scope.launch { delay(150); firstBtnFocus.requestFocus() } }; true }
-                    KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_REWIND -> { if (!playerController.isLive) playerController.jumpBackward(15); showUI(); true }
-                    KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { if (!playerController.isLive) playerController.jumpForward(30); showUI(); true }
+                    KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_REWIND -> { if (!playerController.isLive) playerController.jumpBackward(10); showUI(); true }
+                    KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { if (!playerController.isLive) playerController.jumpForward(10); showUI(); true }
                     KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> { if (!playerController.isLive) playerController.togglePause() else showPictureSettings = true; showUI(); true }
                     KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE -> { onClose(); true }
                     else -> { showUI(); true }
@@ -121,7 +160,11 @@ fun PlayerScreen(playerController: PlayerController, onClose: () -> Unit) {
             .pointerInput(Unit) { detectDragGestures { _, d -> if (playerController.isLive) { if (d.y < -50) { playerController.zapNext(); showUI() } else if (d.y > 50) { playerController.zapPrev(); showUI() } else if (d.x > 80) onClose() } else { if (d.x > 80) onClose() } } }
         )
 
-        if (playerController.isBuffering) {
+        playerController.seekMessage?.let { message ->
+            Text(message, color = Color.White, fontSize = 22.sp,
+                modifier = Modifier.align(Alignment.Center).background(Color(0xCC000000), RoundedCornerShape(10.dp)).padding(18.dp))
+        }
+        if (playerController.isBuffering && playerController.seekMessage == null) {
             CircularProgressIndicator(
                 modifier = Modifier.align(Alignment.Center).size(48.dp),
                 color = FocusGlow
@@ -149,19 +192,42 @@ fun PlayerScreen(playerController: PlayerController, onClose: () -> Unit) {
             if (!playerController.isTuning) { Box(modifier = Modifier.align(Alignment.TopEnd).padding(16.dp).size(36.dp).background(Color(0x80000000), CircleShape).clickable { onClose() }, contentAlignment = Alignment.Center) { Icon(Icons.Default.ArrowBack, null, tint = Color.White, modifier = Modifier.size(18.dp)) } }
 
             if (!playerController.isLive) {
-                Column(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color(0xDD000000)).padding(horizontal = 20.dp, vertical = 10.dp)) {
-                    Box(modifier = Modifier.fillMaxWidth().height(20.dp).pointerInput(Unit) { detectTapGestures { offset -> playerController.seek((offset.x / size.width).coerceIn(0f, 1f)) } }, contentAlignment = Alignment.CenterStart) { Box(modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color(0x33FFFFFF))); Box(modifier = Modifier.fillMaxWidth(playerController.progress.coerceIn(0f, 1f)).height(4.dp).clip(RoundedCornerShape(2.dp)).background(FocusGreen)) }
+                Column(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().onKeyEvent {
+                    if (it.type == KeyEventType.KeyDown && it.key.nativeKeyCode == KeyEvent.KEYCODE_DPAD_UP) {
+                        inBarMode = false
+                        scope.launch { delay(50); mainFocus.requestFocus() }
+                        true
+                    } else false
+                }.background(Color(0xDD000000)).padding(horizontal = 20.dp, vertical = 10.dp)) {
+                    Box(Modifier.fillMaxWidth()) {
+                        LinearProgressIndicator(progress = playerController.bufferedProgress,
+                            modifier = Modifier.fillMaxWidth().align(Alignment.Center).height(4.dp),
+                            color = Color(0x66FFFFFF), trackColor = Color(0x33FFFFFF))
+                        Slider(
+                            value = sliderFraction ?: playerController.progress.coerceIn(0f, 1f),
+                            onValueChange = { sliderFraction = it },
+                            onValueChangeFinished = {
+                                sliderFraction?.let { playerController.seek(it); playerController.commitSeek() }
+                                sliderFraction = null
+                                showUI()
+                            },
+                            enabled = playerController.canSeek,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = SliderDefaults.colors(thumbColor = FocusGreen, activeTrackColor = FocusGreen,
+                                inactiveTrackColor = Color.Transparent)
+                        )
+                    }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(playerController.timeStr, fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = Color(0x99FFFFFF)); Text(playerController.durationStr, fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = Color(0x99FFFFFF)) }
                     Spacer(Modifier.height(6.dp))
                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        GreenBtn(Icons.Default.Replay10, Modifier.focusRequester(firstBtnFocus)) { playerController.jumpBackward(15) }
+                        GreenBtn(Icons.Default.Replay10, Modifier.focusRequester(firstBtnFocus)) { playerController.jumpBackward(10) }
                         Spacer(Modifier.width(6.dp))
                         GreenBtn(if (playerController.isActuallyPlaying) Icons.Default.Pause else Icons.Default.PlayArrow) { playerController.togglePause() }
                         Spacer(Modifier.width(6.dp))
-                        GreenBtn(Icons.Default.Forward30) { playerController.jumpForward(30) }
+                        GreenBtn(Icons.Default.Forward10) { playerController.jumpForward(10) }
                         Spacer(Modifier.weight(1f))
                         var sa by remember { mutableStateOf(false) }
-                        Box { GreenBtn(Icons.Default.AspectRatio) { sa = true }; DropdownMenu(expanded = sa, onDismissRequest = { sa = false }) { playerController.aspectModes.forEachIndexed { i, m -> DropdownMenuItem(text = { Text(m + if (i == playerController.aspectMode) " *" else "") }, onClick = { playerController.cycleAspect(); sa = false }) } } }
+                        Box { GreenBtn(Icons.Default.AspectRatio) { sa = true }; DropdownMenu(expanded = sa, onDismissRequest = { sa = false }) { playerController.aspectModes.forEachIndexed { i, m -> DropdownMenuItem(text = { Text(m + if (i == playerController.aspectMode) " *" else "") }, onClick = { playerController.selectAspect(i); sa = false }) } } }
                         Spacer(Modifier.width(6.dp))
                         var aa by remember { mutableStateOf(false) }
                         Box { GreenBtn(Icons.Default.VolumeUp) { aa = true }; DropdownMenu(expanded = aa, onDismissRequest = { aa = false }) { playerController.getAudioTracks().forEach { (i, n) -> DropdownMenuItem(text = { Text(n) }, onClick = { playerController.setAudioTrack(i); aa = false }) }; if (playerController.getAudioTracks().isEmpty()) DropdownMenuItem(text = { Text("Default") }, onClick = { aa = false }) } }
@@ -170,7 +236,7 @@ fun PlayerScreen(playerController: PlayerController, onClose: () -> Unit) {
                         Box { GreenBtn(Icons.Default.Subtitles) { ss = true }; DropdownMenu(expanded = ss, onDismissRequest = { ss = false }) { DropdownMenuItem(text = { Text("Off") }, onClick = { playerController.setSubtitleTrack(-1); ss = false }); playerController.getSubtitleTracks().forEach { (i, n) -> DropdownMenuItem(text = { Text(n) }, onClick = { playerController.setSubtitleTrack(i); ss = false }) } } }
                     }
                     Spacer(Modifier.height(3.dp))
-                    Text(if (inBarMode) "◄► Mover cursor  |  OK Abrir  |  ▲ Volver" else "◄► Adelantar  |  ▼ Abrir barra  |  ← Salir", fontSize = 9.sp, color = Color(0x55FFFFFF))
+                    Text(if (inBarMode) "◄► Mover cursor  |  OK Abrir  |  ▲ Volver" else "◄► ±10 s · Mantener: 30/60 s · Soltar: aplicar | ▼ Controles", fontSize = 9.sp, color = Color(0x55FFFFFF))
                 }
             }
             if (playerController.isLive) { Text("▲▼ Canal  |  ← Volver", fontSize = 10.sp, color = Color(0x55FFFFFF), modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 14.dp)) }

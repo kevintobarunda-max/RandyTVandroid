@@ -43,3 +43,13 @@ Local assembleDebug/lintDebug could not start: this environment cannot reach ser
 
 ## Installation revision
 A separate signed, non-debuggable projector build uses com.randytv.mobile.hy300 and label Randy TV HY300 to avoid replacing a differently signed original app. CI checks APK metadata/signature and installs/reinstalls it on API 31. This addresses a suspected signature conflict; the device error code is not available.
+
+## 1.2.0 seeking
+- Remote input accumulates a preview target; a single seek is applied on key release or after 300 ms without input. Repeat events are limited to one update per 160 ms.
+- Single press is 10 seconds. Hold thresholds 1.5/4 seconds select 30/60-second steps.
+- Closest-sync seeking trades frame precision for lower decoder work; the server/file must support seeking.
+- Retains 8 seconds of back buffer within the existing sample-memory budget. No large video disk cache is introduced.
+- Slider commits only at the end of the gesture. Buffered range and target time are visible. Unknown duration / unseekable media are guarded; new media discard pending seeks.
+- PlayerView now implements actual fit/fill and forced 16:9/4:3 presentation; choosing a menu item selects that aspect directly.
+- Unit tests cover accumulation, reversal, boundaries, invalid input, cancellation and acceleration. Android instrumentation uses a generated 90-second H.264 fixture to check one seek per burst, start/end clamping and paused-state preservation.
+- Tests do not measure provider-network latency or physical HY300 frame rate.

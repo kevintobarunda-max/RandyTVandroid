@@ -19,6 +19,7 @@ import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.SeekParameters
 import com.randytv.mobile.data.model.LiveStream
 import com.randytv.mobile.data.network.ApiConfig
 import kotlinx.coroutines.*
@@ -45,13 +46,14 @@ class PlayerController(context: Context) {
         .setBufferDurationsMs(5000, 15000, 1000, 2500)
         .setTargetBufferBytes(if (lowMemory) 12 * 1024 * 1024 else 24 * 1024 * 1024)
         .setPrioritizeTimeOverSizeThresholds(false)
-        .setBackBuffer(0, false)
+        .setBackBuffer(8000, true)
         .build()
 
     val activePlayer: ExoPlayer = ExoPlayer.Builder(
         context.applicationContext,
         DefaultRenderersFactory(context.applicationContext).setEnableDecoderFallback(true)
     ).setLoadControl(loadControl).build().apply {
+        setSeekParameters(SeekParameters.CLOSEST_SYNC)
         setAudioAttributes(audioAttrs, true)
         setHandleAudioBecomingNoisy(true)
         if (lowMemory) {
@@ -69,6 +71,11 @@ class PlayerController(context: Context) {
             override fun onPlaybackStateChanged(playbackState: Int) {
                 isBuffering = playbackState == Player.STATE_BUFFERING
                 isTuning = isLive && isBuffering
+                if (playbackState == Player.STATE_READY && seekTarget.pendingMs == null) isSeeking = false
+            }
+            override fun onEvents(player: Player, events: Player.Events) {
+                canSeek = !isLive && player.isCurrentMediaItemSeekable && player.duration > 0
+                if (canSeek && seekTarget.pendingMs == null && !isSeeking) seekMessage = null
             }
             override fun onIsPlayingChanged(playing: Boolean) { isActuallyPlaying = playing }
             override fun onPlayerError(error: PlaybackException) {
@@ -85,6 +92,15 @@ class PlayerController(context: Context) {
             }
         })
     }
+
+    private val seekTarget = SeekTarget()
+    private var seekJob: Job? = null
+    var canSeek by mutableStateOf(false)
+        private set
+    var seekMessage by mutableStateOf<String?>(null)
+        private set
+    var bufferedProgress by mutableFloatStateOf(0f)
+        private set
 
     var isBuffering by mutableStateOf(false)
         private set
@@ -148,7 +164,10 @@ class PlayerController(context: Context) {
     }
 
     private fun playUrl(url: String, name: String, icon: String, live: Boolean) {
+        cancelPendingSeek()
         scope.coroutineContext.cancelChildren()
+        canSeek = false
+        bufferedProgress = 0f
         isLive = live
         title = name
         logo = icon
@@ -187,7 +206,8 @@ class PlayerController(context: Context) {
     fun applyPictureMode(next: PictureMode) {
         if (next == pictureMode) return
         val item = activePlayer.currentMediaItem
-        val position = activePlayer.currentPosition
+        val position = seekTarget.pendingMs ?: activePlayer.currentPosition
+        cancelPendingSeek()
         val shouldPlay = activePlayer.playWhenReady
         activePlayer.stop()
         pictureMode = next
@@ -210,10 +230,64 @@ class PlayerController(context: Context) {
     }
 
     fun togglePause() { if (activePlayer.isPlaying) activePlayer.pause() else { activePlayer.playWhenReady = true; activePlayer.play() } }
-    fun seek(fraction: Float) { isSeeking = true; val d = activePlayer.duration; if (d > 0) { activePlayer.seekTo((fraction * d).toLong()); progress = fraction }; scope.launch { delay(600); isSeeking = false } }
-    fun jumpForward(seconds: Int = 30) { val duration = activePlayer.duration; if (duration > 0) activePlayer.seekTo((activePlayer.currentPosition + seconds * 1000L).coerceAtMost(duration)) }
-    fun jumpBackward(seconds: Int = 15) { activePlayer.seekTo((activePlayer.currentPosition - seconds * 1000L).coerceAtLeast(0)) }
-    fun cycleAspect() { aspectMode = (aspectMode + 1) % aspectModes.size }
+    private fun queueSeek(targetMs: Long?) {
+        if (targetMs == null) return
+        isSeeking = true
+        seekMessage = "Ir a ${fmt(targetMs)}"
+        progress = targetMs.toFloat() / activePlayer.duration
+        timeStr = fmt(targetMs)
+        seekJob?.cancel()
+        seekJob = scope.launch { delay(300); commitSeek() }
+    }
+
+    private fun seekSupported(): Boolean {
+        if (isLive || activePlayer.duration <= 0 || !activePlayer.isCurrentMediaItemSeekable) {
+            seekMessage = "Este contenido todavía no permite adelantar."
+            return false
+        }
+        return true
+    }
+
+    fun seek(fraction: Float) {
+        if (seekSupported()) queueSeek(seekTarget.fraction(fraction, activePlayer.duration))
+    }
+
+    private fun jump(seconds: Int) {
+        if (seekSupported()) queueSeek(seekTarget.relative(
+            activePlayer.currentPosition, seconds * 1000L, activePlayer.duration))
+    }
+
+    fun jumpForward(seconds: Int = 10) = jump(seconds)
+    fun jumpBackward(seconds: Int = 10) = jump(-seconds)
+    fun remoteSeek(forward: Boolean, heldMs: Long) {
+        val seconds = SeekTarget.remoteStepSeconds(heldMs)
+        jump(if (forward) seconds else -seconds)
+    }
+
+    /** One actual decoder seek for a burst of remote events. Keeps pause/play intent. */
+    fun commitSeek() {
+        seekJob?.cancel()
+        seekJob = null
+        val targetMs = seekTarget.take() ?: return
+        if (!isLive && activePlayer.isCurrentMediaItemSeekable) {
+            activePlayer.seekTo(targetMs)
+            isSeeking = activePlayer.playbackState == Player.STATE_BUFFERING
+            seekMessage = null
+        } else {
+            isSeeking = false
+        }
+    }
+
+    fun cancelPendingSeek() {
+        seekJob?.cancel()
+        seekJob = null
+        seekTarget.clear()
+        isSeeking = false
+        seekMessage = null
+    }
+
+    fun selectAspect(index: Int) { aspectMode = index.coerceIn(aspectModes.indices) }
+    fun cycleAspect() { selectAspect((aspectMode + 1) % aspectModes.size) }
 
     fun getAudioTracks(): List<Pair<Int, String>> {
         val t = mutableListOf<Pair<Int, String>>(); var i = 0
@@ -232,10 +306,26 @@ class PlayerController(context: Context) {
     fun setAudioTrack(index: Int) { var ai = 0; for (g in activePlayer.currentTracks.groups) { if (g.type == C.TRACK_TYPE_AUDIO) { for (j in 0 until g.length) { if (ai == index) { activePlayer.trackSelectionParameters = activePlayer.trackSelectionParameters.buildUpon().setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup, j)).build(); return }; ai++ } } } }
     fun setSubtitleTrack(index: Int) { if (index < 0) { activePlayer.trackSelectionParameters = activePlayer.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).build(); return }; activePlayer.trackSelectionParameters = activePlayer.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build(); var si = 0; for (g in activePlayer.currentTracks.groups) { if (g.type == C.TRACK_TYPE_TEXT) { for (j in 0 until g.length) { if (si == index) { activePlayer.trackSelectionParameters = activePlayer.trackSelectionParameters.buildUpon().setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup, j)).build(); return }; si++ } } } }
 
-    fun updateProgress() { if (isSeeking) return; val d = activePlayer.duration; val p = activePlayer.currentPosition; if (d > 0) { progress = p.toFloat() / d.toFloat(); timeStr = fmt(p); durationStr = fmt(d) } }
-    private fun fmt(ms: Long): String { val s = (ms / 1000).toInt(); return String.format("%02d:%02d", s / 60, s % 60) }
+    fun updateProgress() {
+        val duration = activePlayer.duration
+        if (duration <= 0) return
+        bufferedProgress = (activePlayer.bufferedPosition.toFloat() / duration).coerceIn(0f, 1f)
+        durationStr = fmt(duration)
+        if (seekTarget.pendingMs != null) return
+        val position = activePlayer.currentPosition
+        progress = (position.toFloat() / duration).coerceIn(0f, 1f)
+        timeStr = fmt(position)
+    }
+    private fun fmt(ms: Long): String {
+        val seconds = (ms.coerceAtLeast(0) / 1000)
+        return if (seconds >= 3600) String.format("%d:%02d:%02d", seconds / 3600, seconds / 60 % 60, seconds % 60)
+            else String.format("%02d:%02d", seconds / 60, seconds % 60)
+    }
 
     fun stopAll() {
+        cancelPendingSeek()
+        canSeek = false
+        bufferedProgress = 0f
         scope.coroutineContext.cancelChildren()
         activePlayer.stop()
         activePlayer.clearMediaItems()
