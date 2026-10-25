@@ -48,7 +48,7 @@ class CatalogIndex<T> private constructor(
         return synchronized(cache) { cache[cacheKey(category, normalized, searchAll)] }
     }
 
-    /** Rare bigram candidates, verified against the full name: collisions cannot lose titles. */
+    /** Rare trigram candidates, verified against the full name: collisions cannot lose titles. */
     suspend fun query(category: String, text: String, searchAll: Boolean = true): List<CatalogEntry<T>> {
         immediate(category, text, searchAll)?.let { return it }
         return withContext(dispatcher) {
@@ -57,8 +57,8 @@ class CatalogIndex<T> private constructor(
             val context = currentCoroutineContext()
             var candidates: IntArray? = null
             postings?.let { buckets ->
-                for (token in tokens) for (i in 0 until token.length - 1) {
-                    val ids = buckets[bucket(token[i], token[i + 1])]
+                for (token in tokens) for (i in 0 until token.length - 2) {
+                    val ids = buckets[bucket(token[i], token[i + 1], token[i + 2])]
                     if (candidates == null || ids.size < candidates!!.size) candidates = ids
                 }
             }
@@ -112,11 +112,12 @@ class CatalogIndex<T> private constructor(
     }
 
     companion object {
-        private const val BUCKETS = 4096
-        private fun bucket(a: Char, b: Char): Int = ((a.code * 31) xor b.code) and (BUCKETS - 1)
+        private const val BUCKETS = 32768
+        private fun bucket(a: Char, b: Char, c: Char): Int =
+            ((a.code * 31 + b.code) * 31 + c.code) and (BUCKETS - 1)
 
         // Primitive arrays avoid a String/boxed-Integer object for every name fragment.
-        // Bound auxiliary storage to 8 MiB; larger catalogs retain the exact scan fallback.
+        // Bound posting payload to 8 MiB; larger catalogs retain the exact scan fallback.
         private suspend fun <T> buildPostings(rows: List<CatalogEntry<T>>): Array<IntArray>? {
             val context = currentCoroutineContext()
             val counts = IntArray(BUCKETS)
@@ -124,8 +125,8 @@ class CatalogIndex<T> private constructor(
             var total = 0
             rows.forEachIndexed { id, row ->
                 if (id % 128 == 0) context.ensureActive()
-                for (i in 0 until row.searchName.length - 1) {
-                    val key = bucket(row.searchName[i], row.searchName[i + 1])
+                for (i in 0 until row.searchName.length - 2) {
+                    val key = bucket(row.searchName[i], row.searchName[i + 1], row.searchName[i + 2])
                     if (seen[key] != id) {
                         seen[key] = id
                         counts[key]++
@@ -133,13 +134,14 @@ class CatalogIndex<T> private constructor(
                     }
                 }
             }
-            val result = Array(BUCKETS) { IntArray(counts[it]) }
+            val empty = IntArray(0)
+            val result = Array(BUCKETS) { if (counts[it] == 0) empty else IntArray(counts[it]) }
             counts.fill(0)
             seen.fill(-1)
             rows.forEachIndexed { id, row ->
                 if (id % 128 == 0) context.ensureActive()
-                for (i in 0 until row.searchName.length - 1) {
-                    val key = bucket(row.searchName[i], row.searchName[i + 1])
+                for (i in 0 until row.searchName.length - 2) {
+                    val key = bucket(row.searchName[i], row.searchName[i + 1], row.searchName[i + 2])
                     if (seen[key] != id) {
                         seen[key] = id
                         result[key][counts[key]++] = id
