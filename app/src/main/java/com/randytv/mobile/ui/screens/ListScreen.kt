@@ -245,8 +245,11 @@ private fun <T> CatalogSection(
             Text("Cargando $kind… ${index.entries.size} títulos disponibles",
                 modifier = Modifier.padding(horizontal = 14.dp), fontSize = 11.sp,
                 color = androidx.compose.ui.graphics.Color.LightGray)
-        } else if (busy) {
-            LinearProgressIndicator(modifier = Modifier.fillMaxWidth().height(2.dp), color = FocusGreen)
+        } else {
+            // Keep grid dimensions fixed while queries start/finish; avoid resizing every poster.
+            Box(Modifier.fillMaxWidth().height(2.dp)) {
+                if (busy) LinearProgressIndicator(modifier = Modifier.fillMaxSize(), color = FocusGreen)
+            }
         }
         error?.let {
             Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp),
