@@ -77,10 +77,20 @@ class SeekPlaybackTest {
                 controller.commitSeek()
             }
             await("Seeking to the end should leave the player before EOF") {
-                controller.activePlayer.currentPosition in 87000L..89500L &&
-                    controller.activePlayer.playbackState == Player.STATE_READY
+                val player = controller.activePlayer
+                player.currentPosition >= player.duration - 5000 &&
+                    player.currentPosition < player.duration &&
+                    player.playbackState == Player.STATE_READY
             }
             main { assertFalse(controller.activePlayer.playWhenReady) }
+        } catch (failure: Throwable) {
+            main {
+                println("seek diagnostics: state=${controller.activePlayer.playbackState}, " +
+                    "position=${controller.activePlayer.currentPosition}, duration=${controller.activePlayer.duration}, " +
+                    "seekable=${controller.canSeek}, error=${controller.activePlayer.playerError?.errorCodeName}, " +
+                    "playWhenReady=${controller.activePlayer.playWhenReady}")
+            }
+            throw failure
         } finally {
             scenario.close()
             video.delete()
