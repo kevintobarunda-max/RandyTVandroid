@@ -4,6 +4,7 @@ import android.os.SystemClock
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.*
 import org.junit.Test
@@ -34,13 +35,11 @@ class SeekPlaybackTest {
             video.outputStream().use { input.copyTo(it) }
         }
         lateinit var controller: PlayerController
-        var created = false
+        val scenario = ActivityScenario.launch(SeekTestActivity::class.java)
+        scenario.onActivity { controller = it.controller }
         val seekCount = AtomicInteger()
         try {
             main {
-                controller = PlayerController(context)
-                created = true
-                controller.applyPictureMode(PictureMode.ORIGINAL)
                 controller.activePlayer.addListener(object : Player.Listener {
                     override fun onPositionDiscontinuity(
                         oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int
@@ -83,7 +82,7 @@ class SeekPlaybackTest {
             }
             main { assertFalse(controller.activePlayer.playWhenReady) }
         } finally {
-            if (created) main { controller.release() }
+            scenario.close()
             video.delete()
         }
     }
