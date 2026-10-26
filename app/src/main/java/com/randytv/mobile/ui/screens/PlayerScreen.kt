@@ -104,10 +104,10 @@ fun PlayerScreen(playerController: PlayerController, onClose: () -> Unit) {
             delay(200)
         }
     }
-    val nativeView = remember(context, player) {
-        PlayerView(context).apply { useController = false; this.player = player }
+    val nativeView = remember(context) {
+        PlayerView(context).apply { useController = false }
     }
-    DisposableEffect(player, nativeView) {
+    DisposableEffect(nativeView) {
         onDispose { playerController.cancelPendingSeek(); nativeView.player = null }
     }
 
@@ -122,6 +122,7 @@ fun PlayerScreen(playerController: PlayerController, onClose: () -> Unit) {
                 Modifier.size(width, width / ratio)
             }
             AndroidView(factory = { nativeView }, update = {
+                if (it.player !== player) it.player = player
                 it.resizeMode = if (playerController.aspectMode == 0)
                     AspectRatioFrameLayout.RESIZE_MODE_FIT else AspectRatioFrameLayout.RESIZE_MODE_FILL
             }, modifier = videoModifier)
