@@ -7,6 +7,15 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class CatalogIndexTest {
+    @Test fun fastNormalizationMatchesUnicodePathForAsciiNames() {
+        val samples = listOf("  STAR_WARS: The-Force!  ", "A/B 123", "", "?!", "el senor", "ABC\tDEF\nGHI")
+        for (sample in samples) {
+            val expected = sample.lowercase(java.util.Locale.ROOT).replace(Regex("[^a-z0-9]+"), " ").trim()
+            assertEquals(expected, CatalogText.normalize(sample))
+        }
+        assertEquals("senor camion", CatalogText.normalize("Señor CAMIÓN"))
+    }
+
     @Test fun categoryReturnsEveryMovieBeyondTheOldLimit() = runBlocking {
         val movies = (1..250).map { VodStream(streamId = it, name = "Película $it", categoryId = "a") }
         val index = CatalogIndex.build(movies, { it.name }, { it.categoryId })

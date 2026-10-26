@@ -48,7 +48,7 @@ class MainActivity : ComponentActivity() {
         volumeControlStream = AudioManager.STREAM_MUSIC
         try { window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) } catch (_: Exception) {}
         try { playerController = PlayerController(this) } catch (e: Exception) { errorMsg = e.message ?: "Error"; Log.e("RandyTV", "ERROR: $errorMsg", e) }
-        
+
         setContent {
             val pc = playerController
             if (pc != null) { RandyTVApp(pc, repository) }

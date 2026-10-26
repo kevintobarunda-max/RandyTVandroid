@@ -19,7 +19,8 @@ class CatalogDiskCache(private val directory: File,
         } catch (_: Exception) { file.delete(); null }
     }
     suspend fun <T> write(key: String, items: List<T>) = withContext(dispatcher) {
-        val temporary = File(directory, "$key.tmp")
+        directory.mkdirs()
+        val temporary = runCatching { File.createTempFile(key, ".tmp", directory) }.getOrNull() ?: return@withContext
         try {
             directory.mkdirs()
             temporary.outputStream().use { stream ->

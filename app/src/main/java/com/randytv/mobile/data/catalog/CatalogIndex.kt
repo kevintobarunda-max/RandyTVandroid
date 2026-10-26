@@ -17,9 +17,26 @@ const val SIMPSONS = "@simpsons"
 object CatalogText {
     private val marks = Regex("\\p{M}+")
     private val separators = Regex("[^\\p{L}\\p{N}]+")
-    fun normalize(value: String?): String = separators.replace(
-        marks.replace(Normalizer.normalize(value.orEmpty(), Normalizer.Form.NFD), "")
-            .lowercase(Locale.ROOT), " ").trim()
+    fun normalize(value: String?): String {
+        val text = value.orEmpty()
+        // Most provider names/keystrokes are ASCII: avoid three regex/Unicode passes.
+        if (text.all { it.code < 128 }) {
+            val result = StringBuilder(text.length)
+            var separator = false
+            for (character in text) {
+                val letter = if (character in 'A'..'Z') character + 32 else character
+                if (letter in 'a'..'z' || letter in '0'..'9') {
+                    if (separator && result.isNotEmpty()) result.append(' ')
+                    result.append(letter)
+                    separator = false
+                } else separator = true
+            }
+            return result.toString()
+        }
+        return separators.replace(
+            marks.replace(Normalizer.normalize(text, Normalizer.Form.NFD), "")
+                .lowercase(Locale.ROOT), " ").trim()
+    }
 }
 
 /** Row identity is independent of filtering; duplicate provider IDs never hide titles. */

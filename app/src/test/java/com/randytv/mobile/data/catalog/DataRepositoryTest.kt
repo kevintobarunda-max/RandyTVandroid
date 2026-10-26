@@ -4,6 +4,10 @@ import com.randytv.mobile.data.model.*
 import com.randytv.mobile.data.network.CatalogApi
 import com.randytv.mobile.data.repository.DataRepository
 import java.io.IOException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.test.runCurrent
+import org.junit.Rule
+import org.junit.rules.TemporaryFolder
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
@@ -12,8 +16,10 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class DataRepositoryTest {
+    @get:Rule val folder = TemporaryFolder()
     private class Api : CatalogApi {
         var failVod = false
+        var gate: CompletableDeferred<Unit>? = null
         var calls = 0
         override suspend fun getLiveCategories() = listOf(Category("l", "TV"))
         override suspend fun getVodCategories() = listOf(Category("v", "Películas"))
@@ -21,6 +27,7 @@ class DataRepositoryTest {
         override suspend fun getLiveStreams() = listOf(LiveStream(streamId = 1, name = "TV", categoryId = "l"))
         override suspend fun getVodStreams(): List<VodStream> {
             calls++
+            gate?.await()
             if (failVod) throw IOException("offline")
             return (1..250).map { VodStream(streamId = it, name = "Película $it", categoryId = "v") }
         }
@@ -62,4 +69,26 @@ class DataRepositoryTest {
             assertNotNull(repo.vodError)
         } finally { repo.cancel() }
     }
+    @Test fun cachedTitlesAreSearchableBeforeSlowNetworkFinishes() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val cache = CatalogDiskCache(folder.root, dispatcher)
+        cache.write("vod", listOf(VodStream(streamId = 99, name = "Película guardada")))
+        val gate = CompletableDeferred<Unit>()
+        val api = Api().apply { this.gate = gate }
+        val repo = DataRepository(api, dispatcher, dispatcher, cache)
+        try {
+            val job = repo.reloadVod()
+            runCurrent()
+            assertFalse(job.isCompleted)
+            assertFalse(repo.vodLoading)
+            assertEquals(1, repo.vodIndex.query(ALL_CATEGORIES, "guardada").size)
+            gate.complete(Unit)
+            job.join()
+            assertEquals(250, repo.vodStreams.size)
+            val previous = repo.vodIndex
+            repo.reloadVod().join()
+            assertSame("An unchanged refresh must not rebuild search indexes or redraw all cards", previous, repo.vodIndex)
+        } finally { repo.cancel() }
+    }
+
 }

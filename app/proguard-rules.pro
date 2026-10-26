@@ -6,3 +6,7 @@
 -keep class com.google.gson.reflect.TypeToken { *; }
 -keep class * extends com.google.gson.reflect.TypeToken
 -keep class com.randytv.mobile.data.network.Tmdb** { *; }
+
+# Reflectively constructed renderer and JNI callback names must survive the installer build.
+-keep class androidx.media3.decoder.ffmpeg.** { *; }
+-keep class com.randytv.mobile.data.repository.CatalogViewModel { public <init>(android.app.Application); }

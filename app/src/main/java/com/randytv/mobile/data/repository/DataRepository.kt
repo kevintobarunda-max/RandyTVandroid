@@ -106,6 +106,7 @@ class DataRepository(
                     computationDispatcher)
             }
             liveLoading = false
+            items.getOrNull()?.let { cache?.write("live", it) }
             val categories = categoryRequest.await()
             categories.getOrNull()?.let { liveCategories = it; cache?.write("live-categories", it) }
             tick()
@@ -115,7 +116,6 @@ class DataRepository(
                 else -> null
             }
             liveLoading = false
-            items.getOrNull()?.let { cache?.write("live", it) }
             loadDone = true
             tick()
         }
@@ -143,6 +143,7 @@ class DataRepository(
                     dispatcher = computationDispatcher)
             }
             vodLoading = false
+            items.getOrNull()?.let { cache?.write("vod", it) }
             val categories = categoryRequest.await()
             categories.getOrNull()?.let { vodCategories = it; cache?.write("vod-categories", it) }
             tick()
@@ -152,7 +153,6 @@ class DataRepository(
                 else -> null
             }
             vodLoading = false
-            items.getOrNull()?.let { cache?.write("vod", it) }
             tick()
         }
         vodJob = job
@@ -179,6 +179,7 @@ class DataRepository(
                     dispatcher = computationDispatcher)
             }
             seriesLoading = false
+            items.getOrNull()?.let { cache?.write("series", it) }
             val categories = categoryRequest.await()
             categories.getOrNull()?.let { seriesCategories = it; cache?.write("series-categories", it) }
             tick()
@@ -188,7 +189,6 @@ class DataRepository(
                 else -> null
             }
             seriesLoading = false
-            items.getOrNull()?.let { cache?.write("series", it) }
             tick()
         }
         seriesJob = job
