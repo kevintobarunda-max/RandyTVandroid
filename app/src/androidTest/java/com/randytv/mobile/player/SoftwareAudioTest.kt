@@ -21,7 +21,9 @@ class SoftwareAudioTest {
         val codecs = listOf("ac3", "eac3", "dca", "truehd", "mp3", "mp2", "flac", "opus", "vorbis", "alac", "ac3-surround", "truehd-surround")
         ActivityScenario.launch(SeekTestActivity::class.java).use { scenario ->
             for (codec in codecs) {
-                val media = File(instrumentation.targetContext.cacheDir, "audio-$codec.mka")
+                // ALAC is extracted from MP4/M4A; Media3 does not expose ALAC in Matroska.
+                val extension = if (codec == "alac") "m4a" else "mka"
+                val media = File(instrumentation.targetContext.cacheDir, "audio-$codec.$extension")
                 instrumentation.context.assets.open(media.name).use { input -> media.outputStream().use { input.copyTo(it) } }
                 var decoder = ""
                 val listener = object : AnalyticsListener {
