@@ -6,7 +6,11 @@ import androidx.media3.effect.RgbMatrix
 @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 class ProjectorBrightness(mode: PictureMode) : RgbMatrix {
     private val identity = FloatArray(16).also { for (i in 0..3) it[i * 5] = 1f }
-    private val adjusted = identity.copyOf().also { matrix ->
+    @Volatile private var adjusted = matrixFor(mode)
+
+    fun update(mode: PictureMode) { adjusted = matrixFor(mode) }
+
+    private fun matrixFor(mode: PictureMode) = identity.copyOf().also { matrix ->
         val weights = floatArrayOf(0.2126f, 0.7152f, 0.0722f)
         // OpenGL column-major RGB matrix; neutral grays stay neutral.
         for (row in 0..2) {

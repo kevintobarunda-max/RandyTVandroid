@@ -327,7 +327,7 @@ private fun PictureSidePanel(controller: PlayerController, modifier: Modifier,
                 }
             }
             controller.pictureNotice?.let { Text(it, color = Color(0xFFFFD180), fontSize = 11.sp) }
-            Text("Se guarda automáticamente. Al cambiar puede haber una pausa breve.", color = Color.LightGray, fontSize = 10.sp)
+            Text("Se aplica al vídeo y se guarda automáticamente, sin detener la reproducción.", color = Color.LightGray, fontSize = 10.sp)
             Text("El aclarado digital se aplica a vídeo SDR con el decodificador del proyector. No aumenta la potencia del LED.",
                 color = Color.LightGray, fontSize = 10.sp)
             TextButton(onClick = onDisplaySettings) { Text("Ajustes de pantalla", color = FocusGlow, fontSize = 11.sp) }
@@ -370,4 +370,3 @@ fun PlaybackBufferingIndicator(percent: Int?, modifier: Modifier = Modifier) {
         Text(if (percent == 100) "Búfer listo · preparando imagen…" else "Cargando búfer…", color = Color.White, fontSize = 12.sp)
     }
 }
-

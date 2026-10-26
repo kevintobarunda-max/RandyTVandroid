@@ -64,6 +64,9 @@ class PlayerController(
         .setBackBuffer(8000, true)
         .build())
 
+    private val pictureEffect = ProjectorBrightness(pictureMode)
+    private var pictureEffectsDisabled = false
+
     var activePlayer: ExoPlayer by mutableStateOf(createPlayer())
         private set
 
@@ -89,7 +92,7 @@ class PlayerController(
                 .setMaxVideoFrameRate(30)
                 .build()
         }
-        if (!softwareVideoPreferred && pictureMode != PictureMode.ORIGINAL) setVideoEffects(listOf(ProjectorBrightness(pictureMode)))
+        if (!softwareVideoPreferred && !pictureEffectsDisabled) setVideoEffects(listOf(pictureEffect))
         addAnalyticsListener(object : androidx.media3.exoplayer.analytics.AnalyticsListener {
             override fun onVideoDecoderInitialized(eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime,
                 decoderName: String, initializedTimestampMs: Long, initializationDurationMs: Long) {
@@ -125,10 +128,20 @@ class PlayerController(
                 }
                 isBuffering = false
                 isTuning = false
-                if (pictureMode != PictureMode.ORIGINAL && error.errorCode in listOf(
+                if (!pictureEffectsDisabled && error.errorCode in listOf(
                         PlaybackException.ERROR_CODE_VIDEO_FRAME_PROCESSING_FAILED,
                         PlaybackException.ERROR_CODE_VIDEO_FRAME_PROCESSOR_INIT_FAILED)) {
-                    applyPictureMode(PictureMode.ORIGINAL)
+                    pictureEffectsDisabled = true
+                    val resume = activePlayer.playWhenReady
+                    val position = activePlayer.currentPosition.coerceAtLeast(0)
+                    activePlayer.stop()
+                    activePlayer.setVideoEffects(emptyList())
+                    pictureMode = PictureMode.ORIGINAL
+                    pictureEffect.update(PictureMode.ORIGINAL)
+                    preferences.edit().putString("picture_mode", PictureMode.ORIGINAL.name).apply()
+                    if (!isLive) activePlayer.seekTo(position)
+                    activePlayer.prepare()
+                    activePlayer.playWhenReady = resume
                     pictureNotice = "Aclarado desactivado: el procesador gráfico no admite este efecto."
                     return
                 }
@@ -312,29 +325,16 @@ class PlayerController(
     fun playSeries(episodeId: String, ext: String?, name: String) =
         playUrl(ApiConfig.seriesUrl(episodeId, MediaContainer.extension(ext)), name, "", false)
 
-    /** Reconfigure effects only while stopped, as required by Media3 1.2. */
+    /** Swap an immutable matrix on the GL thread's next frame; never stop/reopen the stream. */
     fun applyPictureMode(next: PictureMode) {
-        if (isSoftwareVideo && next != PictureMode.ORIGINAL) {
-            pictureNotice = "Los filtros de imagen requieren el decodificador del proyector."
+        if ((isSoftwareVideo || pictureEffectsDisabled) && next != PictureMode.ORIGINAL) {
+            pictureNotice = "Este decodificador no permite aplicar filtros de imagen."
             return
         }
-        if (next == pictureMode) return
-        val item = activePlayer.currentMediaItem
-        val position = seekTarget.pendingMs ?: activePlayer.currentPosition
-        cancelPendingSeek()
-        val shouldPlay = activePlayer.playWhenReady
-        activePlayer.stop()
+        pictureEffect.update(next)
         pictureMode = next
         preferences.edit().putString("picture_mode", next.name).apply()
         pictureNotice = null
-        activePlayer.setVideoEffects(
-            if (next == PictureMode.ORIGINAL) emptyList() else listOf(ProjectorBrightness(next))
-        )
-        if (item != null) {
-            activePlayer.setMediaItem(item, if (isLive) C.TIME_UNSET else position)
-            activePlayer.prepare()
-            activePlayer.playWhenReady = shouldPlay
-        }
     }
 
     fun retry() {

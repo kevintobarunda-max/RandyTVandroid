@@ -121,9 +121,9 @@ jobs:
             unzip -l "$apk" "lib/$abi/libgav1JNI.so" | grep -q 'libgav1JNI.so'
           done
           mkdir -p installer
-          cp "$apk" installer/RandyTV-HY300-1.5.3.apk
+          cp "$apk" installer/RandyTV-HY300-1.5.4.apk
           cp THIRD_PARTY_AUDIO.md THIRD_PARTY_VIDEO.md installer/
-          sha256sum installer/RandyTV-HY300-1.5.3.apk > installer/SHA256.txt
+          sha256sum installer/RandyTV-HY300-1.5.4.apk > installer/SHA256.txt
       - uses: actions/upload-artifact@v4
         with:
           name: HY300-seek-test-apks
@@ -167,7 +167,7 @@ jobs:
         with:
           name: RandyTV-HY300-instalar
           path: previous
-          run-id: 40407688332
+          run-id: 40413972490
           github-token: ${{ github.token }}
       - name: Enable KVM
         run: |
@@ -185,9 +185,9 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           script: |
-            adb install previous/RandyTV-HY300-1.5.2.apk
-            adb install -r installer/RandyTV-HY300-1.5.3.apk
-            adb install -r installer/RandyTV-HY300-1.5.3.apk
+            adb install previous/RandyTV-HY300-1.5.3.apk
+            adb install -r installer/RandyTV-HY300-1.5.4.apk
+            adb install -r installer/RandyTV-HY300-1.5.4.apk
             adb shell pm path com.randytv.mobile.hy300
             mkdir -p startup
             adb shell svc wifi disable

@@ -6,6 +6,8 @@ import android.view.KeyEvent
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import java.util.concurrent.atomic.AtomicInteger
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.*
@@ -63,6 +65,14 @@ class PicturePanelTest {
         val originalLevel = luminance(before)
         assertTrue("The preview must contain the gray video frame", originalLevel in 25..110)
         before.recycle()
+        val interruptions = AtomicInteger()
+        compose.runOnUiThread {
+            compose.activity.controller.activePlayer.addListener(object : Player.Listener {
+                override fun onPlaybackStateChanged(state: Int) {
+                    if (state == Player.STATE_IDLE || state == Player.STATE_BUFFERING) interruptions.incrementAndGet()
+                }
+            })
+        }
         compose.onNodeWithTag("picture_mode_MAXIMUM").performScrollTo().performClick()
         var brightLevel = 0
         compose.waitUntil(20000) {
@@ -80,6 +90,17 @@ class PicturePanelTest {
         instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
         compose.onNodeWithTag("picture_side_panel").assertDoesNotExist()
         compose.waitUntil(10000) { playing() }
+        assertEquals("Changing picture mode must not stop or buffer the player", 0, interruptions.get())
+        compose.runOnUiThread {
+            val c = compose.activity.controller
+            c.activePlayer.pause()
+            val position = c.activePlayer.currentPosition
+            c.applyPictureMode(PictureMode.TV)
+            c.applyPictureMode(PictureMode.SPORTS)
+            c.applyPictureMode(PictureMode.ORIGINAL)
+            assertFalse(c.activePlayer.playWhenReady)
+            assertEquals(position, c.activePlayer.currentPosition)
+        }
         println("PICTURE_PANEL_OK original=$originalLevel maximum=$brightLevel")
         compose.runOnUiThread { compose.activity.controller.applyPictureMode(PictureMode.ORIGINAL) }
     }
