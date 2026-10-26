@@ -95,7 +95,7 @@ fun PlayerScreen(playerController: PlayerController, onClose: () -> Unit) {
             delay(500)
         }
     }
-    LaunchedEffect(Unit) { mainFocus.requestFocus() }
+    LaunchedEffect(Unit) { mainFocus.requestWhenAttached() }
     LaunchedEffect(showPictureSettings) {
         if (showPictureSettings) { hideJob?.cancel(); uiVisible = false; inBarMode = false }
     }
@@ -120,7 +120,7 @@ fun PlayerScreen(playerController: PlayerController, onClose: () -> Unit) {
         showPictureSettings = false
         inBarMode = false
         showUI()
-        scope.launch { withFrameNanos { }; mainFocus.requestFocus() }
+        scope.launch { mainFocus.requestWhenAttached() }
     }
 
     BoxWithConstraints(Modifier.fillMaxSize().background(Color.Black)) {
@@ -280,12 +280,21 @@ fun PlayerScreen(playerController: PlayerController, onClose: () -> Unit) {
 
 }
 
+/** Constraint layout and Popup attach their focus targets after the first composition. */
+private suspend fun FocusRequester.requestWhenAttached() {
+    repeat(4) {
+        withFrameNanos { }
+        try { requestFocus(); return }
+        catch (_: IllegalStateException) { /* Wait for the target to join the next frame. */ }
+    }
+}
+
 @Composable
 private fun PictureSidePanel(controller: PlayerController, modifier: Modifier,
     onClose: () -> Unit, onDisplaySettings: () -> Unit) {
     val selectedFocus = remember { FocusRequester() }
     val initialMode = remember { controller.pictureMode }
-    LaunchedEffect(Unit) { withFrameNanos { }; selectedFocus.requestFocus() }
+    LaunchedEffect(Unit) { selectedFocus.requestWhenAttached() }
     Column(modifier.testTag("picture_side_panel").background(Color(0xFF101820)).padding(12.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("Imagen", color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.Bold,
@@ -361,3 +370,4 @@ fun PlaybackBufferingIndicator(percent: Int?, modifier: Modifier = Modifier) {
         Text(if (percent == 100) "Búfer listo · preparando imagen…" else "Cargando búfer…", color = Color.White, fontSize = 12.sp)
     }
 }
+
