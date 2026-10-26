@@ -16,7 +16,7 @@ class LiveLoadControl(private val delegate: LoadControl) : LoadControl {
     // Forward every current callback explicitly so DefaultLoadControl owns its lifecycle.
     override fun onPrepared(playerId: PlayerId) = delegate.onPrepared(playerId)
     override fun onTracksSelected(playerId: PlayerId, timeline: Timeline, mediaPeriodId: MediaPeriodId,
-        renderers: Array<Renderer>, trackGroups: TrackGroupArray, trackSelections: Array<ExoTrackSelection?>) =
+        renderers: Array<Renderer>, trackGroups: TrackGroupArray, trackSelections: Array<ExoTrackSelection>) =
         delegate.onTracksSelected(playerId, timeline, mediaPeriodId, renderers, trackGroups, trackSelections)
     override fun onStopped(playerId: PlayerId) = delegate.onStopped(playerId)
     override fun onReleased(playerId: PlayerId) = delegate.onReleased(playerId)
@@ -41,3 +41,4 @@ object LiveStartPolicy {
     fun canStart(live: Boolean, rebuffering: Boolean, bufferedUs: Long, speed: Float): Boolean =
         live && !rebuffering && speed > 0 && bufferedUs / speed >= START_MS * 1000
 }
+
