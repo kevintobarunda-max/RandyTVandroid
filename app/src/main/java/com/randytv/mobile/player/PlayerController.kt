@@ -17,6 +17,9 @@ import androidx.media3.common.Player
 import androidx.media3.common.Tracks
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.SeekParameters
 import com.randytv.mobile.data.model.LiveStream
@@ -51,7 +54,11 @@ class PlayerController(context: Context) {
     val activePlayer: ExoPlayer = ExoPlayer.Builder(
         context.applicationContext,
         ProjectorRenderersFactory(context.applicationContext)
-    ).setLoadControl(loadControl).build().apply {
+    ).setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(
+        context.applicationContext, DefaultHttpDataSource.Factory()
+            .setAllowCrossProtocolRedirects(true)
+            .setConnectTimeoutMs(15000).setReadTimeoutMs(30000)
+    ))).setLoadControl(loadControl).build().apply {
         setSeekParameters(SeekParameters.CLOSEST_SYNC)
         setAudioAttributes(audioAttrs, true)
         setHandleAudioBecomingNoisy(true)
@@ -89,7 +96,14 @@ class PlayerController(context: Context) {
                     pictureNotice = "Aclarado desactivado: el procesador gráfico no admite este efecto."
                     return
                 }
-                playbackError = "No se pudo reproducir el contenido. Pulsa Reintentar."
+                playbackError = when (error.errorCode) {
+                    PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS -> "El servidor rechazó el enlace. Prueba otro título o pulsa Reintentar."
+                    PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+                    PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT -> "No se pudo conectar con el servidor. Comprueba la conexión y pulsa Reintentar."
+                    PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
+                    PlaybackException.ERROR_CODE_DECODER_INIT_FAILED -> "El dispositivo no pudo abrir este formato de audio o vídeo."
+                    else -> "No se pudo reproducir: ${error.errorCodeName}. Pulsa Reintentar."
+                }
             }
         })
     }
@@ -198,11 +212,11 @@ class PlayerController(context: Context) {
         playLive(channel.streamId.toString(), channel.name, channel.streamIcon)
     }
 
-    fun playVOD(streamId: String, ext: String, name: String) =
-        playUrl(ApiConfig.vodUrl(streamId, ext), name, "", false)
+    fun playVOD(streamId: String, ext: String?, name: String) =
+        playUrl(ApiConfig.vodUrl(streamId, MediaContainer.extension(ext)), name, "", false)
 
-    fun playSeries(episodeId: String, ext: String, name: String) =
-        playUrl(ApiConfig.seriesUrl(episodeId, ext), name, "", false)
+    fun playSeries(episodeId: String, ext: String?, name: String) =
+        playUrl(ApiConfig.seriesUrl(episodeId, MediaContainer.extension(ext)), name, "", false)
 
     /** Reconfigure effects only while stopped, as required by Media3 1.2. */
     fun applyPictureMode(next: PictureMode) {
