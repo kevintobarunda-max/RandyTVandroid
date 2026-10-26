@@ -102,6 +102,7 @@ class PlayerController(context: Context, preferSoftwareVideo: Boolean = false) {
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_READY) reachedReady = true
                 isBuffering = playbackState == Player.STATE_BUFFERING
+                bufferingPercent = null
                 isTuning = isLive && isBuffering
                 if (playbackState == Player.STATE_READY && seekTarget.pendingMs == null) isSeeking = false
             }
@@ -222,7 +223,7 @@ class PlayerController(context: Context, preferSoftwareVideo: Boolean = false) {
         activePlayer.trackSelectionParameters = selection
         activePlayer.playbackParameters = playback
         activePlayer.volume = gain
-        activePlayer.setMediaItem(item, position)
+        activePlayer.setMediaItem(item, if (isLive) C.TIME_UNSET else position)
         activePlayer.prepare()
         activePlayer.playWhenReady = play
     }

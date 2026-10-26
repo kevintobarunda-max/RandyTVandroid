@@ -44,7 +44,7 @@ for abi in armeabi-v7a arm64-v8a x86_64; do
   case "$abi" in
     armeabi-v7a) target=armv7-android-gcc; triple=armv7a-linux-androideabi21; extra=(--enable-neon);;
     arm64-v8a) target=arm64-android-gcc; triple=aarch64-linux-android21; extra=(--enable-neon);;
-    x86_64) target=x86_64-linux-gcc; triple=x86_64-linux-android21; extra=(--disable-asm);;
+    x86_64) target=x86_64-linux-gcc; triple=x86_64-linux-android21; extra=(--disable-mmx);;
   esac
   (
     cd "$output"

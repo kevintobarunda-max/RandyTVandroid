@@ -1,10 +1,11 @@
 package com.randytv.mobile.player
 
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNode
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -45,7 +46,9 @@ class BufferingPlaybackTest {
                 sampledPercent != null
             }
             compose.onNodeWithTag("playback_buffering").assertIsDisplayed()
-            // Freeze the value for a deterministic presentation check after measuring real progress.
+            compose.onNode(SemanticsMatcher("percentage text") { node ->
+                node.config.getOrNull(SemanticsProperties.Text)?.any { it.text.matches(Regex("[0-9]{1,3}%")) } == true
+            }).assertIsDisplayed()
             val measured = sampledPercent!!
             compose.runOnUiThread { compose.activity.controller.activePlayer.pause() }
             assertTrue(measured in 1..99)
