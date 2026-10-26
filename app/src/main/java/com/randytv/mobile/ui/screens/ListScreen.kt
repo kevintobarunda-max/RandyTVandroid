@@ -1,5 +1,6 @@
 package com.randytv.mobile.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -74,14 +75,22 @@ fun ListScreen(type: ListType, showSimpsons: Boolean = false, repository: DataRe
     LaunchedEffect(searchOpen, requestSearchFocus, restoreSearchFocus) {
         if (searchOpen && requestSearchFocus) {
             withFrameNanos { }
-            fieldFocus.requestFocus()
+            fieldFocus.requestWhenAttached()
             keyboard?.show()
             requestSearchFocus = false
         } else if (!searchOpen && restoreSearchFocus) {
             withFrameNanos { }
-            searchButtonFocus.requestFocus()
+            searchButtonFocus.requestWhenAttached()
             restoreSearchFocus = false
         }
+    }
+
+    BackHandler(enabled = searchOpen) {
+        searchText = ""
+        searchOpen = false
+        requestResultsFocus = false
+        restoreSearchFocus = true
+        keyboard?.hide()
     }
 
     val onCategory: (String) -> Unit = {
@@ -209,7 +218,7 @@ private fun <T> CatalogSection(
         if (requestResultsFocus && !busy && result.rows.isNotEmpty()) {
             gridState.scrollToItem(0)
             withFrameNanos { }
-            firstResultFocus.requestFocus()
+            firstResultFocus.requestWhenAttached()
             onResultsFocused()
         }
     }
@@ -331,5 +340,13 @@ private fun TVCard(name: String, imageUrl: String, square: Boolean, rating: Doub
         Text(name, color = androidx.compose.ui.graphics.Color.White, fontSize = 11.sp, maxLines = 2,
             overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
             modifier = Modifier.width(if (square) 80.dp else 100.dp))
+    }
+}
+
+/** IME resizing can detach a lazy item between scrollToItem and the next frame. */
+private suspend fun FocusRequester.requestWhenAttached() {
+    repeat(4) {
+        withFrameNanos { }
+        if (runCatching { requestFocus() }.isSuccess) return
     }
 }

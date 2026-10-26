@@ -17,7 +17,6 @@ import androidx.media3.common.Player
 import androidx.media3.common.Tracks
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.exoplayer.DefaultLoadControl
-import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.SeekParameters
 import com.randytv.mobile.data.model.LiveStream
@@ -51,11 +50,13 @@ class PlayerController(context: Context) {
 
     val activePlayer: ExoPlayer = ExoPlayer.Builder(
         context.applicationContext,
-        DefaultRenderersFactory(context.applicationContext).setEnableDecoderFallback(true)
+        ProjectorRenderersFactory(context.applicationContext)
     ).setLoadControl(loadControl).build().apply {
         setSeekParameters(SeekParameters.CLOSEST_SYNC)
         setAudioAttributes(audioAttrs, true)
         setHandleAudioBecomingNoisy(true)
+        trackSelectionParameters = trackSelectionParameters.buildUpon()
+            .setMaxAudioChannelCount(2).setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false).build()
         if (lowMemory) {
             trackSelectionParameters = trackSelectionParameters.buildUpon()
                 .setPreferredVideoMimeTypes(MimeTypes.VIDEO_H264)
@@ -141,9 +142,9 @@ class PlayerController(context: Context) {
     // decodificacion. Reporta el resultado via el callback onResult.
     private fun audioFailureListener(onResult: (Boolean) -> Unit) = object : Player.Listener {
         override fun onTracksChanged(tracks: Tracks) {
-            val audioGroup = tracks.groups.firstOrNull { it.type == C.TRACK_TYPE_AUDIO }
-            val hasAudio = audioGroup != null
-            val audioPlayable = audioGroup?.isSelected == true
+            val audioGroups = tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
+            val hasAudio = audioGroups.isNotEmpty()
+            val audioPlayable = audioGroups.any { it.isSelected }
             onResult(hasAudio && !audioPlayable)
         }
         override fun onPlayerError(error: PlaybackException) {
@@ -159,6 +160,7 @@ class PlayerController(context: Context) {
     private fun forcePlay(player: ExoPlayer) {
         player.playWhenReady = true; player.play(); player.volume = 1f
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
             .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
             .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, false).build()
     }
@@ -307,7 +309,24 @@ class PlayerController(context: Context) {
             val label = if (!f.label.isNullOrEmpty() && !f.label!!.contains("/") && !f.label!!.contains("http")) f.label else lang ?: "Sub ${i+1}"
             t.add(Pair(i, label!!)); i++ } } }; return t }
 
-    fun setAudioTrack(index: Int) { var ai = 0; for (g in activePlayer.currentTracks.groups) { if (g.type == C.TRACK_TYPE_AUDIO) { for (j in 0 until g.length) { if (ai == index) { activePlayer.trackSelectionParameters = activePlayer.trackSelectionParameters.buildUpon().setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup, j)).build(); return }; ai++ } } } }
+    fun setAudioTrack(index: Int) {
+        var audioIndex = 0
+        for (group in activePlayer.currentTracks.groups) {
+            if (group.type != C.TRACK_TYPE_AUDIO) continue
+            for (track in 0 until group.length) {
+                if (audioIndex++ != index) continue
+                if (!group.isTrackSupported(track)) { audioUnavailable = true; return }
+                activePlayer.trackSelectionParameters = activePlayer.trackSelectionParameters.buildUpon()
+                    .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+                    .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, track)).build()
+                activePlayer.volume = 1f
+                audioUnavailable = false
+                return
+            }
+        }
+    }
+
     fun setSubtitleTrack(index: Int) { if (index < 0) { activePlayer.trackSelectionParameters = activePlayer.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).build(); return }; activePlayer.trackSelectionParameters = activePlayer.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build(); var si = 0; for (g in activePlayer.currentTracks.groups) { if (g.type == C.TRACK_TYPE_TEXT) { for (j in 0 until g.length) { if (si == index) { activePlayer.trackSelectionParameters = activePlayer.trackSelectionParameters.buildUpon().setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup, j)).build(); return }; si++ } } } }
 
     fun updateProgress() {

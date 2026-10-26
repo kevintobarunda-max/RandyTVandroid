@@ -1,0 +1,26 @@
+package com.randytv.mobile.player
+
+import android.content.Context
+import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.common.Format
+import androidx.media3.common.MimeTypes
+import androidx.media3.exoplayer.audio.ForwardingAudioSink
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.DefaultAudioSink
+
+/** HY300 speakers require decoded PCM, not HDMI/encoded passthrough advertised by some firmware. */
+@androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
+class ProjectorRenderersFactory(context: Context) : DefaultRenderersFactory(context) {
+    init { setEnableDecoderFallback(true) }
+    override fun buildAudioSink(context: Context, enableFloatOutput: Boolean,
+        enableAudioTrackPlaybackParams: Boolean): AudioSink =
+        object : ForwardingAudioSink(DefaultAudioSink.Builder(context)
+            .setEnableFloatOutput(false)
+            .setEnableAudioTrackPlaybackParams(false).build()) {
+            override fun supportsFormat(format: Format): Boolean =
+                format.sampleMimeType == MimeTypes.AUDIO_RAW && super.supportsFormat(format)
+            override fun getFormatSupport(format: Format): Int =
+                if (format.sampleMimeType == MimeTypes.AUDIO_RAW) super.getFormatSupport(format)
+                else AudioSink.SINK_FORMAT_UNSUPPORTED
+        }
+}

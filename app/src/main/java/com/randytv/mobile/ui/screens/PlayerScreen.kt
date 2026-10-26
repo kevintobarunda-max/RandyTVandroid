@@ -133,7 +133,7 @@ fun PlayerScreen(playerController: PlayerController, onClose: () -> Unit) {
                     lastSeekKey = -1
                     return@onKeyEvent true
                 }
-                if (event.type != KeyEventType.KeyDown) return@onKeyEvent true
+                if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
                 if (!playerController.isLive && seekKey) {
                     val now = SystemClock.uptimeMillis()
                     if (lastSeekKey != code) { heldSince = now; lastSeekEvent = 0L; lastSeekKey = code }
@@ -153,7 +153,7 @@ fun PlayerScreen(playerController: PlayerController, onClose: () -> Unit) {
                     KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { if (!playerController.isLive) playerController.jumpForward(10); showUI(); true }
                     KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> { if (!playerController.isLive) playerController.togglePause() else showPictureSettings = true; showUI(); true }
                     KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE -> { onClose(); true }
-                    else -> { showUI(); true }
+                    else -> false
                 }
             }
             .pointerInput(Unit) { detectTapGestures(onTap = { showUI() }) }

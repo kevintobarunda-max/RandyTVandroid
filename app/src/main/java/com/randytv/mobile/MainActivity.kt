@@ -1,6 +1,10 @@
 package com.randytv.mobile
 
 import android.os.Bundle
+import android.media.AudioManager
+import android.view.KeyEvent
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.randytv.mobile.player.MediaVolumeKeys
 import android.util.Log
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -36,6 +40,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        volumeControlStream = AudioManager.STREAM_MUSIC
         try { window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) } catch (_: Exception) {}
         try { playerController = PlayerController(this) } catch (e: Exception) { errorMsg = e.message ?: "Error"; Log.e("RandyTV", "ERROR: $errorMsg", e) }
         try { repository.loadAll() } catch (_: Exception) {}
@@ -45,6 +50,9 @@ class MainActivity : ComponentActivity() {
             else { Box(modifier = Modifier.fillMaxSize().background(Color.Red), contentAlignment = Alignment.Center) { Column(horizontalAlignment = Alignment.CenterHorizontally) { Text("ERROR", color = Color.White, fontSize = 32.sp, fontWeight = FontWeight.Bold); Spacer(modifier = Modifier.height(8.dp)); Text(errorMsg, color = Color.White, fontSize = 14.sp) } } }
         }
     }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean =
+        MediaVolumeKeys.dispatch(this, event) || super.dispatchKeyEvent(event)
 
     override fun onDestroy() { super.onDestroy(); try { playerController?.release() } catch (_: Exception) {}; try { repository.cancel() } catch (_: Exception) {} }
     override fun onPause() {
@@ -61,11 +69,11 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun RandyTVApp(playerController: PlayerController, repository: DataRepository) {
-    var currentScreen by remember { mutableStateOf("home") }
-    var showSimpsons by remember { mutableStateOf(false) }
+    var currentScreen by rememberSaveable { mutableStateOf("home") }
+    var showSimpsons by rememberSaveable { mutableStateOf(false) }
     var selectedVod by remember { mutableStateOf<VodStream?>(null) }
     var selectedSeries by remember { mutableStateOf<SeriesItem?>(null) }
-    var previousScreen by remember { mutableStateOf("home") }
+    var previousScreen by rememberSaveable { mutableStateOf("home") }
 
     androidx.activity.compose.BackHandler(enabled = currentScreen != "home" && currentScreen != "splash") {
         when (currentScreen) {
