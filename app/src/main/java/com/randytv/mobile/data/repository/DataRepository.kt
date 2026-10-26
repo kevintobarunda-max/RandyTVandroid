@@ -133,7 +133,7 @@ class DataRepository(
                 cache?.read("vod", VodStream::class.java)?.let { cached ->
                     vodIndex = CatalogIndex.build(cached, { row -> row.name }, { row -> row.categoryId },
                         dispatcher = computationDispatcher)
-                    vodLoading = false
+                    vodLoading = true
                 }
             }
             val categoryRequest = async { retry { api.getVodCategories() } }
@@ -142,13 +142,21 @@ class DataRepository(
                 if (withContext(computationDispatcher) { it != vodIndex.items }) vodIndex = CatalogIndex.build(it, { row -> row.name }, { row -> row.categoryId },
                     dispatcher = computationDispatcher)
             }
-            vodLoading = false
             items.getOrNull()?.let { cache?.write("vod", it) }
             val categories = categoryRequest.await()
             categories.getOrNull()?.let { vodCategories = it; cache?.write("vod-categories", it) }
+            val completion = if (categories.isSuccess) retry { api.completeVod(vodIndex.items, vodCategories) }.getOrNull() else null
+            completion?.let { result ->
+                if (withContext(computationDispatcher) { result.items != vodIndex.items }) {
+                    vodIndex = CatalogIndex.build(result.items, { row -> row.name }, { row -> row.categoryId }, dispatcher = computationDispatcher)
+                    cache?.write("vod", result.items)
+                }
+            }
             tick()
             vodError = when {
-                items.isFailure -> "No se pudieron actualizar las películas. Reintenta."
+                completion != null && completion.failedCategories > 0 -> "Faltan ${completion.failedCategories} categorías por descargar. Pulsa Reintentar."
+                categories.isSuccess && completion == null -> "No se pudo completar la revisión de categorías. Pulsa Reintentar."
+                items.isFailure && completion?.checked != true -> "No se pudieron actualizar las películas. Reintenta."
                 categories.isFailure -> "Faltan nombres de categorías; los títulos descargados siguen disponibles."
                 else -> null
             }
@@ -169,7 +177,7 @@ class DataRepository(
                 cache?.read("series", SeriesItem::class.java)?.let { cached ->
                     seriesIndex = CatalogIndex.build(cached, { row -> row.name }, { row -> row.categoryId },
                         dispatcher = computationDispatcher)
-                    seriesLoading = false
+                    seriesLoading = true
                 }
             }
             val categoryRequest = async { retry { api.getSeriesCategories() } }
@@ -178,13 +186,21 @@ class DataRepository(
                 if (withContext(computationDispatcher) { it != seriesIndex.items }) seriesIndex = CatalogIndex.build(it, { row -> row.name }, { row -> row.categoryId },
                     dispatcher = computationDispatcher)
             }
-            seriesLoading = false
             items.getOrNull()?.let { cache?.write("series", it) }
             val categories = categoryRequest.await()
             categories.getOrNull()?.let { seriesCategories = it; cache?.write("series-categories", it) }
+            val completion = if (categories.isSuccess) retry { api.completeSeries(seriesIndex.items, seriesCategories) }.getOrNull() else null
+            completion?.let { result ->
+                if (withContext(computationDispatcher) { result.items != seriesIndex.items }) {
+                    seriesIndex = CatalogIndex.build(result.items, { row -> row.name }, { row -> row.categoryId }, dispatcher = computationDispatcher)
+                    cache?.write("series", result.items)
+                }
+            }
             tick()
             seriesError = when {
-                items.isFailure -> "No se pudieron actualizar las series. Reintenta."
+                completion != null && completion.failedCategories > 0 -> "Faltan ${completion.failedCategories} categorías por descargar. Pulsa Reintentar."
+                categories.isSuccess && completion == null -> "No se pudo completar la revisión de categorías. Pulsa Reintentar."
+                items.isFailure && completion?.checked != true -> "No se pudieron actualizar las series. Reintenta."
                 categories.isFailure -> "Faltan nombres de categorías; los títulos descargados siguen disponibles."
                 else -> null
             }

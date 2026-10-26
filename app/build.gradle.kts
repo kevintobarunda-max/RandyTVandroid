@@ -11,8 +11,8 @@ android {
         applicationId = "com.randytv.mobile"
         minSdk = 21
         targetSdk = 34
-        versionCode = 10
-        versionName = "1.5.1"
+        versionCode = 11
+        versionName = "1.5.2"
         manifestPlaceholders["appLabel"] = "Randy TV"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -73,6 +73,7 @@ dependencies {
     implementation(project(":decoder-vp9"))
     implementation(project(":decoder-av1"))
     testImplementation("junit:junit:4.13.2")
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
     androidTestImplementation("androidx.test:runner:1.5.2")
     androidTestImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")

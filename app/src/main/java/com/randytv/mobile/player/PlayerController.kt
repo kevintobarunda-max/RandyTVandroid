@@ -17,7 +17,8 @@ import androidx.media3.common.Player
 import androidx.media3.common.Tracks
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.exoplayer.DefaultLoadControl
-import androidx.media3.datasource.okhttp.OkHttpDataSource
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.ExoPlayer
@@ -70,7 +71,9 @@ class PlayerController(
         appContext,
         ProjectorRenderersFactory(appContext, softwareVideoPreferred)
     ).setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(
-        appContext, OkHttpDataSource.Factory(PlaybackHttp.client)
+        appContext, DefaultHttpDataSource.Factory()
+            .setAllowCrossProtocolRedirects(true)
+            .setConnectTimeoutMs(15000).setReadTimeoutMs(30000)
     ))).setLoadControl(loadControl).build().apply {
         setSeekParameters(SeekParameters.CLOSEST_SYNC)
         setAudioAttributes(audioAttrs, true)
@@ -130,7 +133,16 @@ class PlayerController(
                     return
                 }
                 playbackError = when (error.errorCode) {
-                    PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS -> "El servidor rechazó el enlace. Prueba otro título o pulsa Reintentar."
+                    PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS -> {
+                        val status = generateSequence(error as Throwable) { it.cause }
+                            .filterIsInstance<HttpDataSource.InvalidResponseCodeException>().firstOrNull()?.responseCode
+                        when (status) {
+                            401, 403 -> "Acceso rechazado (HTTP $status). Revisa la vigencia y conexiones de tu cuenta."
+                            404 -> "El proveedor no encuentra este contenido (HTTP 404). Actualiza el catálogo."
+                            429 -> "El proveedor limitó las conexiones (HTTP 429). Cierra otras reproducciones y reintenta."
+                            else -> "El servidor rechazó la reproducción (HTTP ${status ?: "desconocido"}). Pulsa Reintentar."
+                        }
+                    }
                     PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
                     PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT -> "No se pudo conectar con el servidor. Comprueba la conexión y pulsa Reintentar."
                     PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
