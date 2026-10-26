@@ -87,6 +87,7 @@ jobs:
             fixture_ffmpeg=$(PYTHONPATH="$RUNNER_TEMP/fixture-tools" python3 -c 'import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())')
           fi
           timeout 60 "$fixture_ffmpeg" -nostdin -y -hide_banner -loglevel error -filter_threads 1 -f lavfi -i "testsrc2=size=320x180:rate=24:duration=90" -f lavfi -i "sine=frequency=440:sample_rate=48000:duration=90" -f lavfi -i "sine=frequency=880:sample_rate=48000:duration=90" -map 0:v -map 1:a -map 2:a -c:v libx264 -threads:v 2 -preset ultrafast -crf 35 -g 24 -profile:v baseline -level 3.0 -pix_fmt yuv420p -c:a aac -ac 2 -b:a 64k -metadata:s:a:0 language=spa -metadata:s:a:1 language=eng -movflags +faststart app/src/androidTest/assets/seek-test.mp4
+          timeout 30 "$fixture_ffmpeg" -nostdin -y -hide_banner -loglevel error -i app/src/androidTest/assets/seek-test.mp4 -t 12 -map 0:v -map 0:a:0 -c copy -f mpegts app/src/androidTest/assets/live-test.ts
           for codec in ac3 eac3 dca truehd mp3 mp2 flac opus vorbis; do
             timeout 30 "$fixture_ffmpeg" -nostdin -y -hide_banner -loglevel error -filter_threads 1 -f lavfi -i "sine=frequency=440:sample_rate=48000:duration=4" -c:a "$codec" -strict -2 -ac 2 "app/src/androidTest/assets/audio-$codec.mka"
           done
@@ -117,9 +118,9 @@ jobs:
             unzip -l "$apk" "lib/$abi/libgav1JNI.so" | grep -q 'libgav1JNI.so'
           done
           mkdir -p installer
-          cp "$apk" installer/RandyTV-HY300-1.5.0.apk
+          cp "$apk" installer/RandyTV-HY300-1.5.1.apk
           cp THIRD_PARTY_AUDIO.md THIRD_PARTY_VIDEO.md installer/
-          sha256sum installer/RandyTV-HY300-1.5.0.apk > installer/SHA256.txt
+          sha256sum installer/RandyTV-HY300-1.5.1.apk > installer/SHA256.txt
       - uses: actions/upload-artifact@v4
         with:
           name: HY300-seek-test-apks
@@ -163,7 +164,7 @@ jobs:
         with:
           name: RandyTV-HY300-instalar
           path: previous
-          run-id: 40262635032
+          run-id: 40312239733
           github-token: ${{ github.token }}
       - name: Enable KVM
         run: |
@@ -181,9 +182,9 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           script: |
-            adb install previous/RandyTV-HY300-1.4.0.apk
-            adb install -r installer/RandyTV-HY300-1.5.0.apk
-            adb install -r installer/RandyTV-HY300-1.5.0.apk
+            adb install previous/RandyTV-HY300-1.5.0.apk
+            adb install -r installer/RandyTV-HY300-1.5.1.apk
+            adb install -r installer/RandyTV-HY300-1.5.1.apk
             adb shell pm path com.randytv.mobile.hy300
             mkdir -p startup
             adb shell svc wifi disable
@@ -214,10 +215,10 @@ jobs:
             adb shell am force-stop com.randytv.mobile.hy300
             adb install seek-apks/debug/app-debug.apk
             adb install seek-apks/androidTest/debug/app-debug-androidTest.apk
-            adb shell am instrument -w -e class com.randytv.mobile.player.SeekPlaybackTest,com.randytv.mobile.player.CatalogUiTest,com.randytv.mobile.player.AudioPlaybackTest,com.randytv.mobile.player.MainNavigationTest,com.randytv.mobile.player.SoftwareAudioTest,com.randytv.mobile.player.SoftwareVideoTest,com.randytv.mobile.player.BufferingPlaybackTest com.randytv.mobile.test/androidx.test.runner.AndroidJUnitRunner | tee startup/seek-test.txt
+            adb shell am instrument -w -e class com.randytv.mobile.player.SeekPlaybackTest,com.randytv.mobile.player.CatalogUiTest,com.randytv.mobile.player.AudioPlaybackTest,com.randytv.mobile.player.MainNavigationTest,com.randytv.mobile.player.SoftwareAudioTest,com.randytv.mobile.player.SoftwareVideoTest,com.randytv.mobile.player.BufferingPlaybackTest,com.randytv.mobile.player.LiveZapTest com.randytv.mobile.test/androidx.test.runner.AndroidJUnitRunner | tee startup/seek-test.txt
             adb logcat -d -s System.out:I ExoPlayerImplInternal:E > startup/seek-logcat.txt
             cat startup/seek-logcat.txt
-            grep -q 'OK (7 tests)' startup/seek-test.txt
+            grep -q 'OK (8 tests)' startup/seek-test.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:

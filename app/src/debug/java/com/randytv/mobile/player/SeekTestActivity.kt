@@ -15,7 +15,9 @@ class SeekTestActivity : ComponentActivity() {
     lateinit var controller: PlayerController
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        controller = PlayerController(this, intent.getBooleanExtra("software_video", false))
+        val testLiveBase = intent.getStringExtra("test_live_base")
+        controller = if (testLiveBase != null) PlayerController(this, liveUrlResolver = { "$testLiveBase/$it.ts" })
+            else PlayerController(this, intent.getBooleanExtra("software_video", false))
         controller.applyPictureMode(PictureMode.ORIGINAL)
         volumeControlStream = AudioManager.STREAM_MUSIC
         setContent { PlayerScreen(controller, onClose = {}) }

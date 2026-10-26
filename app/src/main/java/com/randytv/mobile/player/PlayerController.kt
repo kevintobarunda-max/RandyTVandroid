@@ -17,7 +17,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.Tracks
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.exoplayer.DefaultLoadControl
-import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.ExoPlayer
@@ -27,7 +27,10 @@ import com.randytv.mobile.data.network.ApiConfig
 import kotlinx.coroutines.*
 
 @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
-class PlayerController(context: Context, preferSoftwareVideo: Boolean = false) {
+class PlayerController(
+    context: Context, preferSoftwareVideo: Boolean = false,
+    private val liveUrlResolver: (String) -> String = { ApiConfig.liveUrl(it) }
+) {
 
     private val appContext = context.applicationContext
     private var softwareVideoPreferred = preferSoftwareVideo
@@ -53,12 +56,12 @@ class PlayerController(context: Context, preferSoftwareVideo: Boolean = false) {
             manager.getMemoryInfo(info)
             Build.MODEL.contains("HY300", ignoreCase = true) || manager.isLowRamDevice || info.totalMem <= 3L * 1024 * 1024 * 1024
         }
-    private val loadControl = DefaultLoadControl.Builder()
+    private val loadControl = LiveLoadControl(DefaultLoadControl.Builder()
         .setBufferDurationsMs(5000, 15000, BufferingProgress.START_MS.toInt(), BufferingProgress.REBUFFER_MS.toInt())
         .setTargetBufferBytes(if (lowMemory) 12 * 1024 * 1024 else 24 * 1024 * 1024)
         .setPrioritizeTimeOverSizeThresholds(false)
         .setBackBuffer(8000, true)
-        .build()
+        .build())
 
     var activePlayer: ExoPlayer by mutableStateOf(createPlayer())
         private set
@@ -67,9 +70,7 @@ class PlayerController(context: Context, preferSoftwareVideo: Boolean = false) {
         appContext,
         ProjectorRenderersFactory(appContext, softwareVideoPreferred)
     ).setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(
-        appContext, DefaultHttpDataSource.Factory()
-            .setAllowCrossProtocolRedirects(true)
-            .setConnectTimeoutMs(15000).setReadTimeoutMs(30000)
+        appContext, OkHttpDataSource.Factory(PlaybackHttp.client)
     ))).setLoadControl(loadControl).build().apply {
         setSeekParameters(SeekParameters.CLOSEST_SYNC)
         setAudioAttributes(audioAttrs, true)
@@ -233,7 +234,8 @@ class PlayerController(context: Context, preferSoftwareVideo: Boolean = false) {
         val player = activePlayer
         val remaining = if (!player.isCurrentMediaItemLive && player.duration > 0)
             (player.duration - player.currentPosition).coerceAtLeast(0) else null
-        val target = if (reachedReady) BufferingProgress.REBUFFER_MS else BufferingProgress.START_MS
+        val target = if (reachedReady) BufferingProgress.REBUFFER_MS
+            else if (isLive) LiveStartPolicy.START_MS else BufferingProgress.START_MS
         bufferingPercent = BufferingProgress.percent(player.totalBufferedDuration,
             (target * player.playbackParameters.speed).toLong(), remaining)
     }
@@ -270,13 +272,17 @@ class PlayerController(context: Context, preferSoftwareVideo: Boolean = false) {
         videoNotice = null
         reachedReady = false
         bufferingPercent = null
-        activePlayer.setMediaItem(MediaItem.fromUri(url))
+        isBuffering = true
+        isTuning = live
+        val item = MediaItem.Builder().setUri(url)
+            .setTag(if (live) LiveLoadControl.Kind.LIVE else null).build()
+        activePlayer.setMediaItem(item)
         activePlayer.prepare()
         forcePlay(activePlayer)
     }
 
     fun playLive(streamId: String, name: String, icon: String) =
-        playUrl(ApiConfig.liveUrl(streamId), name, icon, true)
+        playUrl(liveUrlResolver(streamId), name, icon, true)
 
     fun zapNext() = zap(1)
     fun zapPrev() = zap(-1)

@@ -11,8 +11,8 @@ android {
         applicationId = "com.randytv.mobile"
         minSdk = 21
         targetSdk = 34
-        versionCode = 9
-        versionName = "1.5.0"
+        versionCode = 10
+        versionName = "1.5.1"
         manifestPlaceholders["appLabel"] = "Randy TV"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
