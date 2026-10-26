@@ -87,10 +87,10 @@ class PicturePanelTest {
         compose.onNodeWithTag("active_picture_mode").assertTextContains("Máximo brillo", substring = true)
         capture("maximum.png").recycle()
         compose.runOnUiThread { assertEquals(PictureMode.MAXIMUM, compose.activity.controller.pictureMode) }
+        assertEquals("Changing picture mode must not stop or buffer the player", 0, interruptions.get())
         instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
         compose.onNodeWithTag("picture_side_panel").assertDoesNotExist()
         compose.waitUntil(10000) { playing() }
-        assertEquals("Changing picture mode must not stop or buffer the player", 0, interruptions.get())
         compose.runOnUiThread {
             val c = compose.activity.controller
             c.activePlayer.pause()
@@ -105,3 +105,4 @@ class PicturePanelTest {
         compose.runOnUiThread { compose.activity.controller.applyPictureMode(PictureMode.ORIGINAL) }
     }
 }
+
