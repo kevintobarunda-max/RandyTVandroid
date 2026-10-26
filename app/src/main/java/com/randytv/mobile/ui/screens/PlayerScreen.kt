@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Intent
 import android.provider.Settings
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import android.view.KeyEvent
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.AspectRatioFrameLayout
@@ -97,6 +98,12 @@ fun PlayerScreen(playerController: PlayerController, onClose: () -> Unit) {
         if (showPictureSettings) hideJob?.cancel()
     }
     val player = playerController.activePlayer
+    LaunchedEffect(player, playerController.isBuffering) {
+        while (playerController.isBuffering) {
+            playerController.updateBufferingProgress()
+            delay(200)
+        }
+    }
     val nativeView = remember(context, player) {
         PlayerView(context).apply { useController = false; this.player = player }
     }
@@ -165,10 +172,7 @@ fun PlayerScreen(playerController: PlayerController, onClose: () -> Unit) {
                 modifier = Modifier.align(Alignment.Center).background(Color(0xCC000000), RoundedCornerShape(10.dp)).padding(18.dp))
         }
         if (playerController.isBuffering && playerController.seekMessage == null) {
-            CircularProgressIndicator(
-                modifier = Modifier.align(Alignment.Center).size(48.dp),
-                color = FocusGlow
-            )
+            PlaybackBufferingIndicator(playerController.bufferingPercent, Modifier.align(Alignment.Center))
         }
         playerController.playbackError?.let { message ->
             Column(Modifier.align(Alignment.Center).background(Color(0xDD000000)).padding(20.dp),
@@ -184,6 +188,10 @@ fun PlayerScreen(playerController: PlayerController, onClose: () -> Unit) {
         }
 
         if (uiVisible) {
+            playerController.videoNotice?.let {
+                Text(it, color = Color.White, fontSize = 11.sp,
+                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 56.dp).background(Color(0xBB000000)).padding(6.dp))
+            }
             TextButton(
                 onClick = { showPictureSettings = true },
                 modifier = Modifier.align(Alignment.TopCenter).background(Color(0xBB000000))
@@ -292,5 +300,23 @@ private fun GreenBtn(icon: ImageVector, extraModifier: Modifier = Modifier, onCl
             .scale(if (isFocused) 1.2f else 1f)
     ) {
         Icon(icon, null, tint = if (isFocused) Color.Black else Color.White, modifier = Modifier.size(if (isFocused) 26.dp else 18.dp))
+    }
+}
+
+/** The percentage describes the buffer needed to resume, including a live stream's time buffer. */
+@Composable
+fun PlaybackBufferingIndicator(percent: Int?, modifier: Modifier = Modifier) {
+    Column(modifier.background(Color(0xCC000000), RoundedCornerShape(12.dp)).padding(16.dp)
+        .testTag("playback_buffering"), horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(Modifier.size(76.dp), contentAlignment = Alignment.Center) {
+            if (percent == null) CircularProgressIndicator(Modifier.fillMaxSize(), color = FocusGlow)
+            else {
+                CircularProgressIndicator(progress = percent.coerceIn(0, 100) / 100f,
+                    modifier = Modifier.fillMaxSize(), color = FocusGlow, trackColor = Color(0x44FFFFFF))
+                Text("${percent.coerceIn(0, 100)}%", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        Text(if (percent == 100) "Búfer listo · preparando imagen…" else "Cargando búfer…", color = Color.White, fontSize = 12.sp)
     }
 }

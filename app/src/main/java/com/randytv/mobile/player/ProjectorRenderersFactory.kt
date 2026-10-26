@@ -10,11 +10,28 @@ import androidx.media3.exoplayer.audio.DefaultAudioSink
 
 /** HY300 speakers require decoded PCM, not HDMI/encoded passthrough advertised by some firmware. */
 @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
-class ProjectorRenderersFactory(context: Context) : DefaultRenderersFactory(context) {
+class ProjectorRenderersFactory(context: Context, private val preferSoftwareVideo: Boolean = false) : DefaultRenderersFactory(context) {
     init {
         android.util.Log.i("RandyTVAudio", "Software audio ready=${androidx.media3.decoder.ffmpeg.FfmpegLibrary.isAvailable()}")
+        android.util.Log.i("RandyTVVideo", "Software video VP9=${VideoDecoders.vp9} AV1=${VideoDecoders.av1}")
         setEnableDecoderFallback(true)
         setExtensionRendererMode(EXTENSION_RENDERER_MODE_PREFER)
+    }
+    override fun buildVideoRenderers(context: Context, extensionRendererMode: Int,
+        mediaCodecSelector: androidx.media3.exoplayer.mediacodec.MediaCodecSelector,
+        enableDecoderFallback: Boolean, eventHandler: android.os.Handler,
+        eventListener: androidx.media3.exoplayer.video.VideoRendererEventListener,
+        allowedVideoJoiningTimeMs: Long, out: java.util.ArrayList<androidx.media3.exoplayer.Renderer>) {
+        val start = out.size
+        // Audio prefers FFmpeg, but video keeps the projector's hardware first.
+        super.buildVideoRenderers(context, EXTENSION_RENDERER_MODE_OFF, mediaCodecSelector,
+            true, eventHandler, eventListener, allowedVideoJoiningTimeMs, out)
+        val software = java.util.ArrayList<androidx.media3.exoplayer.Renderer>()
+        if (VideoDecoders.vp9) software.add(androidx.media3.decoder.vp9.LibvpxVideoRenderer(
+            allowedVideoJoiningTimeMs, eventHandler, eventListener, 50, 2, 4, 4))
+        if (VideoDecoders.av1) software.add(androidx.media3.decoder.av1.Libgav1VideoRenderer(
+            allowedVideoJoiningTimeMs, eventHandler, eventListener, 50, 2, 4, 4))
+        out.addAll(if (preferSoftwareVideo) start else out.size, software)
     }
     override fun buildAudioSink(context: Context, enableFloatOutput: Boolean,
         enableAudioTrackPlaybackParams: Boolean): AudioSink =

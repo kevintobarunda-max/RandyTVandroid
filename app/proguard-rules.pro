@@ -10,3 +10,6 @@
 # Reflectively constructed renderer and JNI callback names must survive the installer build.
 -keep class androidx.media3.decoder.ffmpeg.** { *; }
 -keep class com.randytv.mobile.data.repository.CatalogViewModel { public <init>(android.app.Application); }
+
+-keep class androidx.media3.decoder.vp9.** { *; }
+-keep class androidx.media3.decoder.av1.** { *; }

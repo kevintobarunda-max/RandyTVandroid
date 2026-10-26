@@ -27,8 +27,17 @@ import com.randytv.mobile.data.network.ApiConfig
 import kotlinx.coroutines.*
 
 @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
-class PlayerController(context: Context) {
+class PlayerController(context: Context, preferSoftwareVideo: Boolean = false) {
 
+    private val appContext = context.applicationContext
+    private var softwareVideoPreferred = preferSoftwareVideo
+    private var reachedReady = false
+    var bufferingPercent by mutableStateOf<Int?>(null)
+        private set
+    var isSoftwareVideo by mutableStateOf(false)
+        private set
+    var videoNotice by mutableStateOf<String?>(null)
+        private set
     private val preferences = context.applicationContext.getSharedPreferences("projector", Context.MODE_PRIVATE)
     var pictureMode by mutableStateOf(PictureMode.fromSaved(preferences.getString("picture_mode", null)))
         private set
@@ -45,17 +54,20 @@ class PlayerController(context: Context) {
             Build.MODEL.contains("HY300", ignoreCase = true) || manager.isLowRamDevice || info.totalMem <= 3L * 1024 * 1024 * 1024
         }
     private val loadControl = DefaultLoadControl.Builder()
-        .setBufferDurationsMs(5000, 15000, 1000, 2500)
+        .setBufferDurationsMs(5000, 15000, BufferingProgress.START_MS.toInt(), BufferingProgress.REBUFFER_MS.toInt())
         .setTargetBufferBytes(if (lowMemory) 12 * 1024 * 1024 else 24 * 1024 * 1024)
         .setPrioritizeTimeOverSizeThresholds(false)
         .setBackBuffer(8000, true)
         .build()
 
-    val activePlayer: ExoPlayer = ExoPlayer.Builder(
-        context.applicationContext,
-        ProjectorRenderersFactory(context.applicationContext)
+    var activePlayer: ExoPlayer by mutableStateOf(createPlayer())
+        private set
+
+    private fun createPlayer(): ExoPlayer = ExoPlayer.Builder(
+        appContext,
+        ProjectorRenderersFactory(appContext, softwareVideoPreferred)
     ).setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(
-        context.applicationContext, DefaultHttpDataSource.Factory()
+        appContext, DefaultHttpDataSource.Factory()
             .setAllowCrossProtocolRedirects(true)
             .setConnectTimeoutMs(15000).setReadTimeoutMs(30000)
     ))).setLoadControl(loadControl).build().apply {
@@ -73,10 +85,22 @@ class PlayerController(context: Context) {
                 .setMaxVideoFrameRate(30)
                 .build()
         }
-        if (pictureMode != PictureMode.ORIGINAL) setVideoEffects(listOf(ProjectorBrightness(pictureMode)))
+        if (!softwareVideoPreferred && pictureMode != PictureMode.ORIGINAL) setVideoEffects(listOf(ProjectorBrightness(pictureMode)))
+        addAnalyticsListener(object : androidx.media3.exoplayer.analytics.AnalyticsListener {
+            override fun onVideoDecoderInitialized(eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime,
+                decoderName: String, initializedTimestampMs: Long, initializationDurationMs: Long) {
+                isSoftwareVideo = decoderName.startsWith("libvpx") || decoderName.startsWith("libgav1")
+                videoNotice = if (isSoftwareVideo) "Vídeo compatible por software · los filtros de imagen no se aplican" else null
+            }
+        })
         addListener(audioFailureListener { audioUnavailable = it })
         addListener(object : Player.Listener {
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                reachedReady = false
+                bufferingPercent = null
+            }
             override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_READY) reachedReady = true
                 isBuffering = playbackState == Player.STATE_BUFFERING
                 isTuning = isLive && isBuffering
                 if (playbackState == Player.STATE_READY && seekTarget.pendingMs == null) isSeeking = false
@@ -87,6 +111,13 @@ class PlayerController(context: Context) {
             }
             override fun onIsPlayingChanged(playing: Boolean) { isActuallyPlaying = playing }
             override fun onPlayerError(error: PlaybackException) {
+                val format = (error as? androidx.media3.exoplayer.ExoPlaybackException)?.rendererFormat
+                if (!softwareVideoPreferred && VideoDecoders.supports(format?.sampleMimeType) &&
+                    error.errorCode in listOf(PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+                        PlaybackException.ERROR_CODE_DECODING_FAILED, PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED)) {
+                    scope.launch { useSoftwareVideo() }
+                    return
+                }
                 isBuffering = false
                 isTuning = false
                 if (pictureMode != PictureMode.ORIGINAL && error.errorCode in listOf(
@@ -162,13 +193,48 @@ class PlayerController(context: Context) {
             onResult(hasAudio && !audioPlayable)
         }
         override fun onPlayerError(error: PlaybackException) {
-            if (error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||
-                error.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED ||
-                error.errorCode == PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED
-            ) {
+            val mime = (error as? androidx.media3.exoplayer.ExoPlaybackException)?.rendererFormat?.sampleMimeType
+            if (mime?.startsWith("audio/") == true && error.errorCode in listOf(
+                PlaybackException.ERROR_CODE_DECODER_INIT_FAILED, PlaybackException.ERROR_CODE_DECODING_FAILED,
+                PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED)) {
                 onResult(true)
             }
         }
+    }
+
+    /** Retry a failing VP9/AV1 hardware decoder once with the bundled software renderer. */
+    fun useSoftwareVideo() {
+        if (softwareVideoPreferred) return
+        val previous = activePlayer
+        val item = previous.currentMediaItem ?: return
+        val position = previous.currentPosition.coerceAtLeast(0)
+        val play = previous.playWhenReady
+        val selection = previous.trackSelectionParameters
+        val playback = previous.playbackParameters
+        val gain = previous.volume
+        cancelPendingSeek()
+        previous.release()
+        softwareVideoPreferred = true
+        reachedReady = false
+        playbackError = null
+        bufferingPercent = null
+        activePlayer = createPlayer()
+        activePlayer.trackSelectionParameters = selection
+        activePlayer.playbackParameters = playback
+        activePlayer.volume = gain
+        activePlayer.setMediaItem(item, position)
+        activePlayer.prepare()
+        activePlayer.playWhenReady = play
+    }
+
+    fun updateBufferingProgress() {
+        if (!isBuffering) { bufferingPercent = null; return }
+        val player = activePlayer
+        val remaining = if (!player.isCurrentMediaItemLive && player.duration > 0)
+            (player.duration - player.currentPosition).coerceAtLeast(0) else null
+        val target = if (reachedReady) BufferingProgress.REBUFFER_MS else BufferingProgress.START_MS
+        bufferingPercent = BufferingProgress.percent(player.totalBufferedDuration,
+            (target * player.playbackParameters.speed).toLong(), remaining)
     }
 
     private fun forcePlay(player: ExoPlayer) {
@@ -194,6 +260,15 @@ class PlayerController(context: Context) {
         progress = 0f
         timeStr = "00:00"
         durationStr = "--:--"
+        if (softwareVideoPreferred) {
+            activePlayer.release()
+            softwareVideoPreferred = false
+            activePlayer = createPlayer()
+        }
+        isSoftwareVideo = false
+        videoNotice = null
+        reachedReady = false
+        bufferingPercent = null
         activePlayer.setMediaItem(MediaItem.fromUri(url))
         activePlayer.prepare()
         forcePlay(activePlayer)
@@ -220,6 +295,10 @@ class PlayerController(context: Context) {
 
     /** Reconfigure effects only while stopped, as required by Media3 1.2. */
     fun applyPictureMode(next: PictureMode) {
+        if (isSoftwareVideo && next != PictureMode.ORIGINAL) {
+            pictureNotice = "Los filtros de imagen requieren el decodificador del proyector."
+            return
+        }
         if (next == pictureMode) return
         val item = activePlayer.currentMediaItem
         val position = seekTarget.pendingMs ?: activePlayer.currentPosition
@@ -368,6 +447,7 @@ class PlayerController(context: Context) {
         activePlayer.clearMediaItems()
         isTuning = false
         isBuffering = false
+        bufferingPercent = null
         isSeeking = false
         playbackError = null
     }

@@ -18,3 +18,5 @@ rootProject.name = "RandyTVandroid"
 include(":app")
 
 include(":decoder-ffmpeg")
+
+include(":decoder-vp9", ":decoder-av1")

@@ -42,3 +42,9 @@ decoder-ffmpeg/upstream/
 installer/
 app/src/main/assets/licenses/
 audio-sources/
+
+.native-video-sources/
+.native-video-build/
+decoder-vp9/upstream/
+decoder-av1/upstream/
+video-sources/
