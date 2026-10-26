@@ -12,6 +12,7 @@ import androidx.media3.exoplayer.audio.DefaultAudioSink
 @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 class ProjectorRenderersFactory(context: Context) : DefaultRenderersFactory(context) {
     init {
+        android.util.Log.i("RandyTVAudio", "Software audio ready=${androidx.media3.decoder.ffmpeg.FfmpegLibrary.isAvailable()}")
         setEnableDecoderFallback(true)
         setExtensionRendererMode(EXTENSION_RENDERER_MODE_PREFER)
     }

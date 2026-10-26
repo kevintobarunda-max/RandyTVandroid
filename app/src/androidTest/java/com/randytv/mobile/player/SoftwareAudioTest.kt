@@ -18,7 +18,7 @@ class SoftwareAudioTest {
     @Test fun softwareDecoderProducesPcmForMovieAndLiveAudioFormats() {
         assertTrue("Bundled native decoder must load", FfmpegLibrary.isAvailable())
         val instrumentation = InstrumentationRegistry.getInstrumentation()
-        val codecs = listOf("ac3", "eac3", "dca", "truehd", "mp3", "flac", "opus", "vorbis", "alac", "ac3-surround")
+        val codecs = listOf("ac3", "eac3", "dca", "truehd", "mp3", "mp2", "flac", "opus", "vorbis", "alac", "ac3-surround")
         ActivityScenario.launch(SeekTestActivity::class.java).use { scenario ->
             for (codec in codecs) {
                 val media = File(instrumentation.targetContext.cacheDir, "audio-$codec.mka")
