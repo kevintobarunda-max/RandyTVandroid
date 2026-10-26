@@ -22,10 +22,11 @@ fi
 if [ ! -f "$native/jni/ffmpeg/android-libs/x86_64/libavcodec.a" ]; then
   bash "$native/jni/build_ffmpeg.sh" "$native" "$ANDROID_HOME/ndk/26.1.10909125" linux-x86_64 21 aac mp3 ac3 eac3 dca truehd mlp vorbis opus flac alac amrnb amrwb pcm_mulaw pcm_alaw
 fi
+python3 scripts/patch-truehd.py
 # LGPL sources and reproducible build instructions accompany the installer.
 mkdir -p audio-sources app/src/main/assets/licenses
 cp .native-sources/*.tar.gz audio-sources/
-cp scripts/build-audio-decoders.sh decoder-ffmpeg/build.gradle.kts audio-sources/
+cp scripts/build-audio-decoders.sh scripts/patch-truehd.py decoder-ffmpeg/build.gradle.kts audio-sources/
 cp "$native/jni/ffmpeg/COPYING.LGPLv2.1" app/src/main/assets/licenses/FFmpeg-LGPL-2.1.txt
 cp "$native/jni/ffmpeg/COPYING.LGPLv2.1" audio-sources/
 tar -xOf .native-sources/media.tar.gz "media-$media_commit/LICENSE" > app/src/main/assets/licenses/Media3-Apache-2.0.txt

@@ -18,7 +18,7 @@ class SoftwareAudioTest {
     @Test fun softwareDecoderProducesPcmForMovieAndLiveAudioFormats() {
         assertTrue("Bundled native decoder must load", FfmpegLibrary.isAvailable())
         val instrumentation = InstrumentationRegistry.getInstrumentation()
-        val codecs = listOf("ac3", "eac3", "dca", "truehd", "mp3", "mp2", "flac", "opus", "vorbis", "alac", "ac3-surround")
+        val codecs = listOf("ac3", "eac3", "dca", "truehd", "mp3", "mp2", "flac", "opus", "vorbis", "alac", "ac3-surround", "truehd-surround")
         ActivityScenario.launch(SeekTestActivity::class.java).use { scenario ->
             for (codec in codecs) {
                 val media = File(instrumentation.targetContext.cacheDir, "audio-$codec.mka")
@@ -51,6 +51,25 @@ class SoftwareAudioTest {
                     if (!passed) SystemClock.sleep(50)
                 }
                 assertTrue("$codec must decode through FFmpeg and feed the PCM output; decoder=$decoder", passed)
+                if (codec.startsWith("truehd")) {
+                    var buffersBefore = 0
+                    scenario.onActivity {
+                        buffersBefore = it.controller.activePlayer.audioDecoderCounters!!.renderedOutputBufferCount
+                        it.controller.activePlayer.seekTo(2000)
+                    }
+                    passed = false
+                    val seekDeadline = SystemClock.elapsedRealtime() + 10000
+                    while (!passed && SystemClock.elapsedRealtime() < seekDeadline) {
+                        scenario.onActivity {
+                            val player = it.controller.activePlayer
+                            assertNull(player.playerError)
+                            passed = player.currentPosition > 2400 &&
+                                (player.audioDecoderCounters?.renderedOutputBufferCount ?: 0) > buffersBefore + 4
+                        }
+                        if (!passed) SystemClock.sleep(50)
+                    }
+                    assertTrue("$codec must continue decoding after seeking", passed)
+                }
                 println("SOFTWARE_AUDIO_OK codec=$codec decoder=$decoder")
                 scenario.onActivity { it.controller.activePlayer.removeAnalyticsListener(listener) }
                 media.delete()

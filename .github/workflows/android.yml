@@ -66,6 +66,7 @@ jobs:
             timeout 30 "$fixture_ffmpeg" -nostdin -y -hide_banner -loglevel error -filter_threads 1 -f lavfi -i "sine=frequency=440:sample_rate=48000:duration=4" -c:a "$codec" -strict -2 -ac 2 "app/src/androidTest/assets/audio-$codec.mka"
           done
           timeout 30 "$fixture_ffmpeg" -nostdin -y -hide_banner -loglevel error -filter_threads 1 -f lavfi -i "sine=frequency=600:sample_rate=48000:duration=4" -af "pan=5.1|FC=c0" -c:a ac3 app/src/androidTest/assets/audio-ac3-surround.mka
+          timeout 30 "$fixture_ffmpeg" -nostdin -y -hide_banner -loglevel error -filter_threads 1 -f lavfi -i "sine=frequency=600:sample_rate=48000:duration=4" -af "pan=5.1|FC=c0" -c:a truehd -strict -2 app/src/androidTest/assets/audio-truehd-surround.mka
       - run: gradle :app:testDebugUnitTest :app:assembleDebug :app:assembleProjector :app:assembleDebugAndroidTest --no-daemon
       - name: Search benchmark result
         run: find app/build/test-results -name 'TEST-*.xml' -exec grep 'CATALOG_BENCHMARK' {} +
