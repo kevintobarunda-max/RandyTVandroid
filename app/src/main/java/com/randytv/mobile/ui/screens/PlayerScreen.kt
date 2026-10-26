@@ -48,6 +48,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import com.randytv.mobile.player.PictureMode
 import com.randytv.mobile.player.PlayerController
 import com.randytv.mobile.ui.components.CachedImage
@@ -95,7 +97,7 @@ fun PlayerScreen(playerController: PlayerController, onClose: () -> Unit) {
     }
     LaunchedEffect(Unit) { mainFocus.requestFocus() }
     LaunchedEffect(showPictureSettings) {
-        if (showPictureSettings) hideJob?.cancel()
+        if (showPictureSettings) { hideJob?.cancel(); uiVisible = false; inBarMode = false }
     }
     val player = playerController.activePlayer
     LaunchedEffect(player, playerController.isBuffering) {
@@ -114,7 +116,16 @@ fun PlayerScreen(playerController: PlayerController, onClose: () -> Unit) {
     fun showUI() { uiVisible = true; hideJob?.cancel(); hideJob = scope.launch { delay(if (inBarMode) 20000 else 4000); uiVisible = false; inBarMode = false } }
     LaunchedEffect(Unit) { showUI() }
 
-    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+    fun closePicturePanel() {
+        showPictureSettings = false
+        inBarMode = false
+        showUI()
+        scope.launch { withFrameNanos { }; mainFocus.requestFocus() }
+    }
+
+    BoxWithConstraints(Modifier.fillMaxSize().background(Color.Black)) {
+        val panelWidth = minOf(320.dp, maxWidth * 0.38f)
+        Box(modifier = Modifier.fillMaxSize().padding(end = if (showPictureSettings) panelWidth else 0.dp)) {
         BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             val ratio = when (playerController.aspectMode) { 1 -> 16f / 9f; 2 -> 4f / 3f; else -> null }
             val videoModifier = if (ratio == null) Modifier.fillMaxSize() else {
@@ -195,7 +206,7 @@ fun PlayerScreen(playerController: PlayerController, onClose: () -> Unit) {
             }
             TextButton(
                 onClick = { showPictureSettings = true },
-                modifier = Modifier.align(Alignment.TopCenter).background(Color(0xBB000000))
+                modifier = Modifier.align(Alignment.TopCenter).testTag("open_picture_panel").background(Color(0xBB000000))
             ) { Text("${playerController.pictureMode.label} · Menú", color = Color.White) }
             Row(modifier = Modifier.align(Alignment.TopStart).padding(16.dp).background(Color(0xAA000000), RoundedCornerShape(8.dp)).padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) { if (playerController.logo.isNotEmpty()) { CachedImage(url = playerController.logo, height = 32.dp, modifier = Modifier.size(32.dp).clip(RoundedCornerShape(6.dp))); Spacer(Modifier.width(8.dp)) }; Column { Text(playerController.title, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 200.dp)); if (playerController.isLive) Row(verticalAlignment = Alignment.CenterVertically) { Box(modifier = Modifier.size(5.dp).background(Color.Red, CircleShape)); Spacer(Modifier.width(4.dp)); Text("EN VIVO", fontSize = 9.sp, color = Color.Red, fontWeight = FontWeight.Bold) } } }
             if (!playerController.isTuning) { Box(modifier = Modifier.align(Alignment.TopEnd).padding(16.dp).size(36.dp).background(Color(0x80000000), CircleShape).clickable { onClose() }, contentAlignment = Alignment.Center) { Icon(Icons.Default.ArrowBack, null, tint = Color.White, modifier = Modifier.size(18.dp)) } }
@@ -251,41 +262,70 @@ fun PlayerScreen(playerController: PlayerController, onClose: () -> Unit) {
             if (playerController.isLive) { Text("▲▼ Canal  |  ← Volver", fontSize = 10.sp, color = Color(0x55FFFFFF), modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 14.dp)) }
         }
     }
-    if (showPictureSettings) {
-        AlertDialog(
-            onDismissRequest = { showPictureSettings = false },
-            title = { Text("Imagen · HY300") },
-            text = {
-                Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Modo activo: ${playerController.pictureMode.label}")
-                    PictureMode.values().forEach { mode ->
-                        OutlinedButton(
-                            onClick = { playerController.applyPictureMode(mode) },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(Modifier.fillMaxWidth()) {
-                                Text((if (mode == playerController.pictureMode) "✓ " else "") + mode.label)
-                                Text(mode.description, fontSize = 12.sp)
-                            }
-                        }
-                    }
-                    Text("Máximo brillo fuerza el aclarado digital más alto de la app y solicita brillo Android al 100% durante la reproducción.")
-                    Text("No aumenta la potencia del LED. El firmware puede ignorar el brillo Android. Los filtros se aplican a video SDR; HDR conserva su imagen original.")
-                    Text("La selección se guarda para TV, películas y series. Cambiar de modo puede causar una pausa breve.")
-                    TextButton(onClick = {
+        if (showPictureSettings) {
+            Popup(alignment = Alignment.CenterEnd,
+                onDismissRequest = { closePicturePanel() },
+                properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = true)) {
+                PictureSidePanel(playerController, Modifier.width(panelWidth).fillMaxHeight(),
+                    onClose = { closePicturePanel() }, onDisplaySettings = {
                         try { context.startActivity(Intent(Settings.ACTION_DISPLAY_SETTINGS)) }
                         catch (_: android.content.ActivityNotFoundException) {
                             try { context.startActivity(Intent(Settings.ACTION_SETTINGS)) }
                             catch (_: android.content.ActivityNotFoundException) { }
                         }
-                    }) { Text("Abrir ajustes de pantalla") }
-                    playerController.pictureNotice?.let { Text(it) }
-                }
-            },
-            confirmButton = { TextButton(onClick = { showPictureSettings = false }) { Text("Volver al video") } }
-        )
+                    })
+            }
+        }
     }
 
+}
+
+@Composable
+private fun PictureSidePanel(controller: PlayerController, modifier: Modifier,
+    onClose: () -> Unit, onDisplaySettings: () -> Unit) {
+    val selectedFocus = remember { FocusRequester() }
+    val initialMode = remember { controller.pictureMode }
+    LaunchedEffect(Unit) { withFrameNanos { }; selectedFocus.requestFocus() }
+    Column(modifier.testTag("picture_side_panel").background(Color(0xFF101820)).padding(12.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("Imagen", color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f))
+            IconButton(onClick = onClose, modifier = Modifier.testTag("close_picture_panel")) {
+                Icon(Icons.Default.Close, contentDescription = "Cerrar imagen", tint = Color.White)
+            }
+        }
+        Text("Activo: ${controller.pictureMode.label}", color = FocusGlow, fontSize = 12.sp,
+            modifier = Modifier.testTag("active_picture_mode"))
+        Text("Selecciona un modo y compara el vídeo a la izquierda.", color = Color.LightGray, fontSize = 11.sp)
+        Spacer(Modifier.height(8.dp))
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            PictureMode.values().forEach { mode ->
+                var focused by remember { mutableStateOf(false) }
+                val selected = mode == controller.pictureMode
+                OutlinedButton(onClick = { controller.applyPictureMode(mode) },
+                    modifier = Modifier.fillMaxWidth().testTag("picture_mode_${mode.name}")
+                        .then(if (mode == initialMode) Modifier.focusRequester(selectedFocus) else Modifier)
+                        .onFocusChanged { focused = it.isFocused }
+                        .border(if (focused) 2.dp else 1.dp,
+                            if (focused) FocusGlow else if (selected) FocusGreen else Color(0xFF48535E), RoundedCornerShape(12.dp)),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = if (selected) Color(0xFF17382E) else Color.Transparent,
+                        contentColor = Color.White), contentPadding = PaddingValues(10.dp)) {
+                    Column(Modifier.fillMaxWidth()) {
+                        Text((if (selected) "✓ " else "") + mode.label, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text(mode.description, fontSize = 10.sp, color = Color.LightGray)
+                    }
+                }
+            }
+            controller.pictureNotice?.let { Text(it, color = Color(0xFFFFD180), fontSize = 11.sp) }
+            Text("Se guarda automáticamente. Al cambiar puede haber una pausa breve.", color = Color.LightGray, fontSize = 10.sp)
+            Text("El aclarado digital se aplica a vídeo SDR con el decodificador del proyector. No aumenta la potencia del LED.",
+                color = Color.LightGray, fontSize = 10.sp)
+            TextButton(onClick = onDisplaySettings) { Text("Ajustes de pantalla", color = FocusGlow, fontSize = 11.sp) }
+        }
+        Text("Atrás: cerrar y seguir viendo", color = Color.LightGray, fontSize = 10.sp,
+            modifier = Modifier.padding(top = 8.dp))
+    }
 }
 
 @Composable
