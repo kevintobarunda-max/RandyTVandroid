@@ -15,6 +15,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.util.concurrent.TimeUnit
+import java.net.InetAddress
 
 @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 @RunWith(AndroidJUnit4::class)
@@ -25,11 +26,12 @@ class BufferingPlaybackTest {
         val bytes = InstrumentationRegistry.getInstrumentation().context.assets.open("seek-test.mp4").use { it.readBytes() }
         server.enqueue(MockResponse().setHeader("Content-Type", "video/mp4")
             .setBody(Buffer().write(bytes)).throttleBody(4096, 200, TimeUnit.MILLISECONDS))
-        server.start()
+        server.start(InetAddress.getByAddress(byteArrayOf(127, 0, 0, 1)), 0)
+        val playbackUrl = "http://127.0.0.1:${server.port}/buffer.mp4"
         try {
             compose.runOnUiThread {
                 compose.activity.controller.activePlayer.apply {
-                    setMediaItem(MediaItem.fromUri(server.url("/buffer.mp4").toString()))
+                    setMediaItem(MediaItem.fromUri(playbackUrl))
                     prepare(); play()
                 }
             }
@@ -56,6 +58,7 @@ class BufferingPlaybackTest {
                 ready
             }
             compose.onNodeWithTag("playback_buffering").assertDoesNotExist()
+            println("BUFFERING_PERCENT_OK measured=$measured")
         } finally {
             compose.runOnUiThread { compose.activity.controller.activePlayer.stop(); compose.activity.controller.activePlayer.clearMediaItems() }
             server.shutdown()
