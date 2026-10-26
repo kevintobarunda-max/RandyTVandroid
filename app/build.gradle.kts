@@ -11,8 +11,8 @@ android {
         applicationId = "com.randytv.mobile"
         minSdk = 21
         targetSdk = 34
-        versionCode = 7
-        versionName = "1.3.2"
+        versionCode = 8
+        versionName = "1.4.0"
         manifestPlaceholders["appLabel"] = "Randy TV"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -69,6 +69,7 @@ android {
 }
 
 dependencies {
+    implementation(project(":decoder-ffmpeg"))
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
     androidTestImplementation("androidx.test:runner:1.5.2")

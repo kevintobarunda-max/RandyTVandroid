@@ -36,3 +36,8 @@ google-services.json
 
 # Local/CI development signing key must never be committed.
 .ci-signing/
+
+.native-sources/
+decoder-ffmpeg/upstream/
+installer/
+app/src/main/assets/licenses/

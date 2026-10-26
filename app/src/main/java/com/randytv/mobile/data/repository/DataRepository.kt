@@ -9,13 +9,14 @@ import com.randytv.mobile.data.model.*
 import com.randytv.mobile.data.network.CatalogHttpApi
 import com.randytv.mobile.data.network.CatalogApi
 import kotlinx.coroutines.*
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 
 class DataRepository(
     private val api: CatalogApi = CatalogHttpApi(),
     mainDispatcher: CoroutineDispatcher = Dispatchers.Main,
-    private val computationDispatcher: CoroutineDispatcher = Dispatchers.Default
+    private val computationDispatcher: CoroutineDispatcher = Dispatchers.Default,
+    private val cache: CatalogDiskCache? = null
 ) {
     var liveCategories by mutableStateOf<List<Category>>(emptyList())
         private set
@@ -53,8 +54,8 @@ class DataRepository(
         private set
 
     private val scope = CoroutineScope(mainDispatcher + SupervisorJob())
-    // Small category requests may overlap; large payloads never allocate concurrently.
-    private val catalogDownload = Mutex()
+    // Two streaming downloads overlap, bounded for a 2 GB device.
+    private val catalogDownload = Semaphore(2)
     private var liveJob: Job? = null
     private var vodJob: Job? = null
     private var seriesJob: Job? = null
@@ -86,22 +87,35 @@ class DataRepository(
         liveLoading = true
         liveError = null
         val job = scope.launch {
-            val categories = retry { api.getLiveCategories() }
-            categories.getOrNull()?.let { liveCategories = it }
-            tick()
-            val items = retry { catalogDownload.withLock { api.getLiveStreams() } }
+            if (liveIndex.items.isEmpty()) {
+                cache?.read("live-categories", Category::class.java)?.let { liveCategories = it }
+                cache?.read("live", LiveStream::class.java)?.let { cached ->
+                    liveIndex = CatalogIndex.build(cached, { row -> row.name }, { row -> row.categoryId },
+                        mapOf(LOW_BITRATE to ChannelGroups::isLowBitrate,
+                            ROUND_THE_CLOCK to ChannelGroups::is24Hour, SIMPSONS to ChannelGroups::isSimpsons),
+                        dispatcher = computationDispatcher)
+                    liveLoading = false
+                }
+            }
+            val categoryRequest = async { retry { api.getLiveCategories() } }
+            val items = retry { catalogDownload.withPermit { api.getLiveStreams() } }
             items.getOrNull()?.let {
-                liveIndex = CatalogIndex.build(it, { row -> row.name }, { row -> row.categoryId },
+                if (withContext(computationDispatcher) { it != liveIndex.items }) liveIndex = CatalogIndex.build(it, { row -> row.name }, { row -> row.categoryId },
                     mapOf(LOW_BITRATE to ChannelGroups::isLowBitrate,
                         ROUND_THE_CLOCK to ChannelGroups::is24Hour, SIMPSONS to ChannelGroups::isSimpsons),
                     computationDispatcher)
             }
+            liveLoading = false
+            val categories = categoryRequest.await()
+            categories.getOrNull()?.let { liveCategories = it; cache?.write("live-categories", it) }
+            tick()
             liveError = when {
                 items.isFailure -> "No se pudieron cargar los canales. Reintenta."
                 categories.isFailure -> "No se pudieron actualizar los nombres de categorías."
                 else -> null
             }
             liveLoading = false
+            items.getOrNull()?.let { cache?.write("live", it) }
             loadDone = true
             tick()
         }
@@ -114,20 +128,31 @@ class DataRepository(
         vodLoading = true
         vodError = null
         val job = scope.launch {
-            val categories = retry { api.getVodCategories() }
-            categories.getOrNull()?.let { vodCategories = it }
-            tick()
-            val items = retry { catalogDownload.withLock { api.getVodStreams() } }
+            if (vodIndex.items.isEmpty()) {
+                cache?.read("vod-categories", Category::class.java)?.let { vodCategories = it }
+                cache?.read("vod", VodStream::class.java)?.let { cached ->
+                    vodIndex = CatalogIndex.build(cached, { row -> row.name }, { row -> row.categoryId },
+                        dispatcher = computationDispatcher)
+                    vodLoading = false
+                }
+            }
+            val categoryRequest = async { retry { api.getVodCategories() } }
+            val items = retry { catalogDownload.withPermit { api.getVodStreams() } }
             items.getOrNull()?.let {
-                vodIndex = CatalogIndex.build(it, { row -> row.name }, { row -> row.categoryId },
+                if (withContext(computationDispatcher) { it != vodIndex.items }) vodIndex = CatalogIndex.build(it, { row -> row.name }, { row -> row.categoryId },
                     dispatcher = computationDispatcher)
             }
+            vodLoading = false
+            val categories = categoryRequest.await()
+            categories.getOrNull()?.let { vodCategories = it; cache?.write("vod-categories", it) }
+            tick()
             vodError = when {
                 items.isFailure -> "No se pudieron actualizar las películas. Reintenta."
                 categories.isFailure -> "Faltan nombres de categorías; los títulos descargados siguen disponibles."
                 else -> null
             }
             vodLoading = false
+            items.getOrNull()?.let { cache?.write("vod", it) }
             tick()
         }
         vodJob = job
@@ -139,20 +164,31 @@ class DataRepository(
         seriesLoading = true
         seriesError = null
         val job = scope.launch {
-            val categories = retry { api.getSeriesCategories() }
-            categories.getOrNull()?.let { seriesCategories = it }
-            tick()
-            val items = retry { catalogDownload.withLock { api.getSeriesList() } }
+            if (seriesIndex.items.isEmpty()) {
+                cache?.read("series-categories", Category::class.java)?.let { seriesCategories = it }
+                cache?.read("series", SeriesItem::class.java)?.let { cached ->
+                    seriesIndex = CatalogIndex.build(cached, { row -> row.name }, { row -> row.categoryId },
+                        dispatcher = computationDispatcher)
+                    seriesLoading = false
+                }
+            }
+            val categoryRequest = async { retry { api.getSeriesCategories() } }
+            val items = retry { catalogDownload.withPermit { api.getSeriesList() } }
             items.getOrNull()?.let {
-                seriesIndex = CatalogIndex.build(it, { row -> row.name }, { row -> row.categoryId },
+                if (withContext(computationDispatcher) { it != seriesIndex.items }) seriesIndex = CatalogIndex.build(it, { row -> row.name }, { row -> row.categoryId },
                     dispatcher = computationDispatcher)
             }
+            seriesLoading = false
+            val categories = categoryRequest.await()
+            categories.getOrNull()?.let { seriesCategories = it; cache?.write("series-categories", it) }
+            tick()
             seriesError = when {
                 items.isFailure -> "No se pudieron actualizar las series. Reintenta."
                 categories.isFailure -> "Faltan nombres de categorías; los títulos descargados siguen disponibles."
                 else -> null
             }
             seriesLoading = false
+            items.getOrNull()?.let { cache?.write("series", it) }
             tick()
         }
         seriesJob = job

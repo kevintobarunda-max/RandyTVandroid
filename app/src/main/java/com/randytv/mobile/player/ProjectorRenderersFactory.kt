@@ -11,10 +11,17 @@ import androidx.media3.exoplayer.audio.DefaultAudioSink
 /** HY300 speakers require decoded PCM, not HDMI/encoded passthrough advertised by some firmware. */
 @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 class ProjectorRenderersFactory(context: Context) : DefaultRenderersFactory(context) {
-    init { setEnableDecoderFallback(true) }
+    init {
+        setEnableDecoderFallback(true)
+        setExtensionRendererMode(EXTENSION_RENDERER_MODE_PREFER)
+    }
     override fun buildAudioSink(context: Context, enableFloatOutput: Boolean,
         enableAudioTrackPlaybackParams: Boolean): AudioSink =
         object : ForwardingAudioSink(DefaultAudioSink.Builder(context)
+            .setAudioProcessors(arrayOf(androidx.media3.common.audio.ChannelMixingAudioProcessor().apply {
+                for (channels in 1..8) putChannelMixingMatrix(
+                    androidx.media3.common.audio.ChannelMixingMatrix(channels, 2, StereoMixing.coefficients(channels)))
+            }))
             .setEnableFloatOutput(false)
             .setEnableAudioTrackPlaybackParams(false).build()) {
             override fun supportsFormat(format: Format): Boolean =

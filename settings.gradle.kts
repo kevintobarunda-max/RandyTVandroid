@@ -16,3 +16,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "RandyTVandroid"
 include(":app")
+
+include(":decoder-ffmpeg")

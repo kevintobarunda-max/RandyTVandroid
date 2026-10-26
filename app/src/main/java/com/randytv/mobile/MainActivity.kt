@@ -37,7 +37,9 @@ import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
     private var playerController: PlayerController? = null
-    private val repository = DataRepository()
+    private val repository by lazy {
+        androidx.lifecycle.ViewModelProvider(this)[com.randytv.mobile.data.repository.CatalogViewModel::class.java].repository
+    }
     private var resumePlayback = false
     private var errorMsg: String = ""
 
@@ -46,7 +48,7 @@ class MainActivity : ComponentActivity() {
         volumeControlStream = AudioManager.STREAM_MUSIC
         try { window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) } catch (_: Exception) {}
         try { playerController = PlayerController(this) } catch (e: Exception) { errorMsg = e.message ?: "Error"; Log.e("RandyTV", "ERROR: $errorMsg", e) }
-        try { repository.loadAll() } catch (_: Exception) {}
+        
         setContent {
             val pc = playerController
             if (pc != null) { RandyTVApp(pc, repository) }
@@ -59,7 +61,7 @@ class MainActivity : ComponentActivity() {
     override fun dispatchKeyEvent(event: KeyEvent): Boolean =
         MediaVolumeKeys.dispatch(this, event) || super.dispatchKeyEvent(event)
 
-    override fun onDestroy() { super.onDestroy(); try { playerController?.release() } catch (_: Exception) {}; try { repository.cancel() } catch (_: Exception) {} }
+    override fun onDestroy() { super.onDestroy(); try { playerController?.release() } catch (_: Exception) {} }
     override fun onPause() {
         resumePlayback = playerController?.activePlayer?.playWhenReady == true
         playerController?.activePlayer?.pause()
