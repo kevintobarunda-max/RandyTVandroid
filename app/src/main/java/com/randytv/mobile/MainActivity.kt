@@ -1,6 +1,7 @@
 package com.randytv.mobile
 
 import android.os.Bundle
+import android.annotation.SuppressLint
 import android.media.AudioManager
 import android.view.KeyEvent
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -51,6 +52,8 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // Public Activity key hook; AndroidX Core marks its inherited implementation restricted.
+    @SuppressLint("RestrictedApi")
     override fun dispatchKeyEvent(event: KeyEvent): Boolean =
         MediaVolumeKeys.dispatch(this, event) || super.dispatchKeyEvent(event)
 

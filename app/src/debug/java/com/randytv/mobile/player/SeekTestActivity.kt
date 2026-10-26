@@ -6,6 +6,7 @@ import android.media.AudioManager
 import android.view.KeyEvent
 import com.randytv.mobile.ui.screens.PlayerScreen
 import android.os.Bundle
+import android.annotation.SuppressLint
 import androidx.media3.ui.PlayerView
 
 /** Debug-only host for exercising the actual decoder with a display surface. */
@@ -19,6 +20,8 @@ class SeekTestActivity : ComponentActivity() {
         volumeControlStream = AudioManager.STREAM_MUSIC
         setContent { PlayerScreen(controller, onClose = {}) }
     }
+    // Public Activity key hook; AndroidX Core marks its inherited implementation restricted.
+    @SuppressLint("RestrictedApi")
     override fun dispatchKeyEvent(event: KeyEvent): Boolean =
         MediaVolumeKeys.dispatch(this, event) || super.dispatchKeyEvent(event)
 
