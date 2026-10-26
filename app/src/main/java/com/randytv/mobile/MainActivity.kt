@@ -5,6 +5,8 @@ import android.annotation.SuppressLint
 import android.media.AudioManager
 import android.view.KeyEvent
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.Saver
+import com.google.gson.Gson
 import com.randytv.mobile.player.MediaVolumeKeys
 import android.util.Log
 import android.view.WindowManager
@@ -74,8 +76,8 @@ class MainActivity : ComponentActivity() {
 fun RandyTVApp(playerController: PlayerController, repository: DataRepository) {
     var currentScreen by rememberSaveable { mutableStateOf("home") }
     var showSimpsons by rememberSaveable { mutableStateOf(false) }
-    var selectedVod by remember { mutableStateOf<VodStream?>(null) }
-    var selectedSeries by remember { mutableStateOf<SeriesItem?>(null) }
+    var selectedVod by rememberSaveable(stateSaver = vodNavigationSaver) { mutableStateOf<VodStream?>(null) }
+    var selectedSeries by rememberSaveable(stateSaver = seriesNavigationSaver) { mutableStateOf<SeriesItem?>(null) }
     var previousScreen by rememberSaveable { mutableStateOf("home") }
 
     androidx.activity.compose.BackHandler(enabled = currentScreen != "home" && currentScreen != "splash") {
@@ -133,3 +135,9 @@ fun RandyTVApp(playerController: PlayerController, repository: DataRepository) {
         "player" -> PlayerScreen(playerController = playerController, onClose = { playerController.stop(); currentScreen = previousScreen })
     }
 }
+
+// Preserve the selected detail together with its route when Android recreates the Activity.
+private val vodNavigationSaver = Saver<VodStream?, String>(
+    save = { Gson().toJson(it) }, restore = { Gson().fromJson(it, VodStream::class.java) })
+private val seriesNavigationSaver = Saver<SeriesItem?, String>(
+    save = { Gson().toJson(it) }, restore = { Gson().fromJson(it, SeriesItem::class.java) })
