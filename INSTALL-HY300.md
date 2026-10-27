@@ -1,4 +1,4 @@
-## 1.5.4: cambiar imagen sin detener el vídeo
+## 1.5.5: cambiar imagen sin detener el vídeo
 
 Los modos actualizan una matriz del filtro en el siguiente fotograma sin stop, prepare, seek ni nuevas conexiones. Se conserva reproducción o pausa. Original usa una matriz identidad dentro del mismo procesador gráfico para permitir volver a los filtros sin reiniciar. Si falla el procesador gráfico, se desactivan los filtros y se intenta recuperar la reproducción una sola vez.
 
@@ -26,7 +26,7 @@ Cambiar de modo conserva el comportamiento del reproductor: puede haber una brev
 
 # Instalar Randy TV HY300
 1. Descarga el artefacto RandyTV-HY300-instalar de la ejecución exitosa de GitHub Actions.
-2. Extrae el ZIP y copia RandyTV-HY300-1.5.4.apk al proyector (USB o descarga local).
+2. Extrae el ZIP y copia RandyTV-HY300-1.5.5.apk al proyector (USB o descarga local).
 3. Abre el APK desde el administrador de archivos. Autoriza a ese administrador a instalar apps desconocidas si Android lo solicita.
 4. Confirma Instalar y abre Randy TV HY300.
 
@@ -44,6 +44,10 @@ For a local projector build, generate the same development alias using keytool (
 Install RandyTV-HY300-1.3.0.apk from the installer artifact. CI verifies an in-place upgrade from the signed 1.2.0 installer. Older differently signed HY300 variants need a clean install. Catalog refresh and local navigation state are separate from server account data.
 
 ## Versión 1.5.0
-Instala RandyTV-HY300-1.5.4.apk sobre 1.4.0 y abre Randy TV HY300. Conserva los decodificadores de audio y agrega alternativas de vídeo VP9 y AV1. El vídeo usa primero los decodificadores Android del proyector; el software es respaldo y puede ser más lento en resoluciones altas. H.264/HEVC siguen usando los decodificadores Android instalados.
+Instala RandyTV-HY300-1.5.5.apk sobre 1.4.0 y abre Randy TV HY300. Conserva los decodificadores de audio y agrega alternativas de vídeo VP9 y AV1. El vídeo usa primero los decodificadores Android del proyector; el software es respaldo y puede ser más lento en resoluciones altas. H.264/HEVC siguen usando los decodificadores Android instalados.
 
 El porcentaje dentro del círculo mide el búfer necesario para iniciar o reanudar, no el porcentaje de una película descargada ni la duración total de un canal. Puede indicar 100% mientras se prepara la imagen. Una recarga o un salto pueden reiniciar ese porcentaje. Si no hay una medida válida, se muestra el círculo sin porcentaje.
+
+## Tiempos legibles en el proyector
+
+Los tiempos transcurrido, total y restante usan números blancos de 24 sp en negrita sobre fondo negro. El contador restante se actualiza durante la reproducción y al adelantar o retroceder.

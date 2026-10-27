@@ -189,6 +189,8 @@ class PlayerController(
         private set
     var timeStr by mutableStateOf("00:00")
         private set
+    var remainingStr by mutableStateOf("--:--")
+        private set
     var durationStr by mutableStateOf("--:--")
         private set
     var title by mutableStateOf("")
@@ -288,6 +290,7 @@ class PlayerController(
         progress = 0f
         timeStr = "00:00"
         durationStr = "--:--"
+        remainingStr = "--:--"
         if (softwareVideoPreferred) {
             activePlayer.release()
             softwareVideoPreferred = false
@@ -350,6 +353,7 @@ class PlayerController(
         seekMessage = "Ir a ${fmt(targetMs)}"
         progress = targetMs.toFloat() / activePlayer.duration
         timeStr = fmt(targetMs)
+        remainingStr = fmt((activePlayer.duration - targetMs).coerceAtLeast(0))
         seekJob?.cancel()
         seekJob = scope.launch { delay(300); commitSeek() }
     }
@@ -450,6 +454,7 @@ class PlayerController(
         val position = activePlayer.currentPosition
         progress = (position.toFloat() / duration).coerceIn(0f, 1f)
         timeStr = fmt(position)
+        remainingStr = fmt((duration - position).coerceAtLeast(0))
     }
     private fun fmt(ms: Long): String {
         val seconds = (ms.coerceAtLeast(0) / 1000)
@@ -470,6 +475,6 @@ class PlayerController(
         isSeeking = false
         playbackError = null
     }
-    fun stop() { stopAll(); isPlaying = false; isLive = false; title = ""; logo = ""; progress = 0f; timeStr = "00:00"; durationStr = "--:--" }
+    fun stop() { stopAll(); isPlaying = false; isLive = false; title = ""; logo = ""; progress = 0f; timeStr = "00:00"; durationStr = "--:--"; remainingStr = "--:--" }
     fun release() { scope.cancel(); activePlayer.release() }
 }

@@ -237,7 +237,11 @@ fun PlayerScreen(playerController: PlayerController, onClose: () -> Unit) {
                                 inactiveTrackColor = Color.Transparent)
                         )
                     }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(playerController.timeStr, fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = Color(0x99FFFFFF)); Text(playerController.durationStr, fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = Color(0x99FFFFFF)) }
+                    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        PlaybackTime("Transcurrido", playerController.timeStr, Modifier.weight(1f), Alignment.Start)
+                        PlaybackTime("Duración", playerController.durationStr, Modifier.weight(1f), Alignment.CenterHorizontally)
+                        PlaybackTime("Restante", playerController.remainingStr, Modifier.weight(1f), Alignment.End)
+                    }
                     Spacer(Modifier.height(6.dp))
                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         GreenBtn(Icons.Default.Replay10, Modifier.focusRequester(firstBtnFocus)) { playerController.jumpBackward(10) }
@@ -368,5 +372,16 @@ fun PlaybackBufferingIndicator(percent: Int?, modifier: Modifier = Modifier) {
         }
         Spacer(Modifier.height(10.dp))
         Text(if (percent == 100) "Búfer listo · preparando imagen…" else "Cargando búfer…", color = Color.White, fontSize = 12.sp)
+    }
+}
+
+/** Opaque backing and bold tabular digits stay readable over bright and dark scenes. */
+@Composable
+private fun PlaybackTime(label: String, value: String, modifier: Modifier, alignment: Alignment.Horizontal) {
+    Column(modifier, horizontalAlignment = alignment) {
+        Text(label, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+        Text(value, color = Color.White, fontSize = 24.sp, lineHeight = 30.sp,
+            fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, maxLines = 1,
+            modifier = Modifier.background(Color.Black, RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp))
     }
 }
