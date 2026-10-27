@@ -1,7 +1,9 @@
 package com.randytv.mobile.player
 
 import android.content.Context
-import android.util.Log
+import android.os.Build
+import androidx.media3.common.MimeTypes
+import android.app.ActivityManager
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -15,38 +17,169 @@ import androidx.media3.common.Player
 import androidx.media3.common.Tracks
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.exoplayer.DefaultLoadControl
-import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.HttpDataSource
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.SeekParameters
 import com.randytv.mobile.data.model.LiveStream
 import com.randytv.mobile.data.network.ApiConfig
 import kotlinx.coroutines.*
 
-class PlayerController(context: Context) {
+@androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
+class PlayerController(
+    context: Context, preferSoftwareVideo: Boolean = false,
+    private val liveUrlResolver: (String) -> String = { ApiConfig.liveUrl(it) }
+) {
+
+    private val appContext = context.applicationContext
+    private var softwareVideoPreferred = preferSoftwareVideo
+    private var reachedReady = false
+    var bufferingPercent by mutableStateOf<Int?>(null)
+        private set
+    var isSoftwareVideo by mutableStateOf(false)
+        private set
+    var videoNotice by mutableStateOf<String?>(null)
+        private set
+    private val preferences = context.applicationContext.getSharedPreferences("projector", Context.MODE_PRIVATE)
+    var pictureMode by mutableStateOf(PictureMode.fromSaved(preferences.getString("picture_mode", null)))
+        private set
+    var pictureNotice by mutableStateOf<String?>(null)
+        private set
 
     private val audioAttrs = AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build()
 
-    // INICIO RAPIDO: solo 500ms para empezar, pero buffer grande para no cortarse
-    private val fastBuffer = DefaultLoadControl.Builder()
-        .setBufferDurationsMs(5000, 120000, 500, 5000)
-        .build()
+    // A single decoder and bounded sample buffer for 2 GB Android projectors.
+    private val lowMemory = (context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager)
+        .let { manager ->
+            val info = ActivityManager.MemoryInfo()
+            manager.getMemoryInfo(info)
+            Build.MODEL.contains("HY300", ignoreCase = true) || manager.isLowRamDevice || info.totalMem <= 3L * 1024 * 1024 * 1024
+        }
+    private val loadControl = LiveLoadControl(DefaultLoadControl.Builder()
+        .setBufferDurationsMs(5000, 15000, BufferingProgress.START_MS.toInt(), BufferingProgress.REBUFFER_MS.toInt())
+        .setTargetBufferBytes(if (lowMemory) 12 * 1024 * 1024 else 24 * 1024 * 1024)
+        .setPrioritizeTimeOverSizeThresholds(false)
+        .setBackBuffer(8000, true)
+        .build())
 
-    // Habilita decodificadores de extension (software) como respaldo si el hardware
-    // no soporta el codec de audio (AC3/EAC3/DTS). Sin la extension FFmpeg compilada
-    // desde codigo fuente esto no tiene efecto propio, pero es seguro dejarlo activo
-    // para cuando se agregue esa extension mas adelante.
-    private val renderersFactory = DefaultRenderersFactory(context)
-        .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+    private val pictureEffect = ProjectorBrightness(pictureMode)
+    private var pictureEffectsDisabled = false
 
-    val player1: ExoPlayer = ExoPlayer.Builder(context, renderersFactory).setLoadControl(fastBuffer).build().apply {
-        playWhenReady = true; setAudioAttributes(audioAttrs, true)
-        addListener(audioFailureListener { player1AudioUnavailable = it })
+    var activePlayer: ExoPlayer by mutableStateOf(createPlayer())
+        private set
+
+    private fun createPlayer(): ExoPlayer = ExoPlayer.Builder(
+        appContext,
+        ProjectorRenderersFactory(appContext, softwareVideoPreferred)
+    ).setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(
+        appContext, DefaultHttpDataSource.Factory()
+            .setAllowCrossProtocolRedirects(true)
+            .setConnectTimeoutMs(15000).setReadTimeoutMs(30000)
+    ))).setLoadControl(loadControl).build().apply {
+        setSeekParameters(SeekParameters.CLOSEST_SYNC)
+        setAudioAttributes(audioAttrs, true)
+        setHandleAudioBecomingNoisy(true)
+        trackSelectionParameters = trackSelectionParameters.buildUpon()
+            .setMaxAudioChannelCount(2).setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false).build()
+        if (lowMemory) {
+            trackSelectionParameters = trackSelectionParameters.buildUpon()
+                .setPreferredVideoMimeTypes(MimeTypes.VIDEO_H264)
+                .setPreferredAudioMimeTypes(MimeTypes.AUDIO_AAC)
+                .setMaxVideoSize(1280, 720)
+                .setMaxVideoBitrate(2_500_000)
+                .setMaxVideoFrameRate(30)
+                .build()
+        }
+        if (!softwareVideoPreferred && !pictureEffectsDisabled) setVideoEffects(listOf(pictureEffect))
+        addAnalyticsListener(object : androidx.media3.exoplayer.analytics.AnalyticsListener {
+            override fun onVideoDecoderInitialized(eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime,
+                decoderName: String, initializedTimestampMs: Long, initializationDurationMs: Long) {
+                isSoftwareVideo = decoderName.startsWith("libvpx") || decoderName.startsWith("libgav1")
+                videoNotice = if (isSoftwareVideo) "Vídeo compatible por software · los filtros de imagen no se aplican" else null
+            }
+        })
+        addListener(audioFailureListener { audioUnavailable = it })
+        addListener(object : Player.Listener {
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                reachedReady = false
+                bufferingPercent = null
+            }
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_READY) reachedReady = true
+                isBuffering = playbackState == Player.STATE_BUFFERING
+                bufferingPercent = null
+                isTuning = isLive && isBuffering
+                if (playbackState == Player.STATE_READY && seekTarget.pendingMs == null) isSeeking = false
+            }
+            override fun onEvents(player: Player, events: Player.Events) {
+                canSeek = !isLive && player.isCurrentMediaItemSeekable && player.duration > 0
+                if (canSeek && seekTarget.pendingMs == null && !isSeeking) seekMessage = null
+            }
+            override fun onIsPlayingChanged(playing: Boolean) { isActuallyPlaying = playing }
+            override fun onPlayerError(error: PlaybackException) {
+                val format = (error as? androidx.media3.exoplayer.ExoPlaybackException)?.rendererFormat
+                if (!softwareVideoPreferred && VideoDecoders.supports(format?.sampleMimeType) &&
+                    error.errorCode in listOf(PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+                        PlaybackException.ERROR_CODE_DECODING_FAILED, PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED)) {
+                    scope.launch { useSoftwareVideo() }
+                    return
+                }
+                isBuffering = false
+                isTuning = false
+                if (!pictureEffectsDisabled && error.errorCode in listOf(
+                        PlaybackException.ERROR_CODE_VIDEO_FRAME_PROCESSING_FAILED,
+                        PlaybackException.ERROR_CODE_VIDEO_FRAME_PROCESSOR_INIT_FAILED)) {
+                    pictureEffectsDisabled = true
+                    val resume = activePlayer.playWhenReady
+                    val position = activePlayer.currentPosition.coerceAtLeast(0)
+                    activePlayer.stop()
+                    activePlayer.setVideoEffects(emptyList())
+                    pictureMode = PictureMode.ORIGINAL
+                    pictureEffect.update(PictureMode.ORIGINAL)
+                    preferences.edit().putString("picture_mode", PictureMode.ORIGINAL.name).apply()
+                    if (!isLive) activePlayer.seekTo(position)
+                    activePlayer.prepare()
+                    activePlayer.playWhenReady = resume
+                    pictureNotice = "Aclarado desactivado: el procesador gráfico no admite este efecto."
+                    return
+                }
+                playbackError = when (error.errorCode) {
+                    PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS -> {
+                        val status = generateSequence(error as Throwable) { it.cause }
+                            .filterIsInstance<HttpDataSource.InvalidResponseCodeException>().firstOrNull()?.responseCode
+                        when (status) {
+                            401, 403 -> "Acceso rechazado (HTTP $status). Revisa la vigencia y conexiones de tu cuenta."
+                            404 -> "El proveedor no encuentra este contenido (HTTP 404). Actualiza el catálogo."
+                            429 -> "El proveedor limitó las conexiones (HTTP 429). Cierra otras reproducciones y reintenta."
+                            else -> "El servidor rechazó la reproducción (HTTP ${status ?: "desconocido"}). Pulsa Reintentar."
+                        }
+                    }
+                    PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+                    PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT -> "No se pudo conectar con el servidor. Comprueba la conexión y pulsa Reintentar."
+                    PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
+                    PlaybackException.ERROR_CODE_DECODER_INIT_FAILED -> "El dispositivo no pudo abrir este formato de audio o vídeo."
+                    else -> "No se pudo reproducir: ${error.errorCodeName}. Pulsa Reintentar."
+                }
+            }
+        })
     }
-    val player2: ExoPlayer = ExoPlayer.Builder(context, renderersFactory).setLoadControl(fastBuffer).build().apply {
-        playWhenReady = true; setAudioAttributes(audioAttrs, true)
-        addListener(audioFailureListener { player2AudioUnavailable = it })
-    }
 
-    var showPlayer1 by mutableStateOf(true)
+    private val seekTarget = SeekTarget()
+    private var seekJob: Job? = null
+    var canSeek by mutableStateOf(false)
+        private set
+    var seekMessage by mutableStateOf<String?>(null)
+        private set
+    var bufferedProgress by mutableFloatStateOf(0f)
+        private set
+
+    var isBuffering by mutableStateOf(false)
+        private set
+    var isActuallyPlaying by mutableStateOf(false)
+        private set
+    var playbackError by mutableStateOf<String?>(null)
         private set
     var isPlaying by mutableStateOf(false)
         private set
@@ -55,6 +188,8 @@ class PlayerController(context: Context) {
     var progress by mutableFloatStateOf(0f)
         private set
     var timeStr by mutableStateOf("00:00")
+        private set
+    var remainingStr by mutableStateOf("--:--")
         private set
     var durationStr by mutableStateOf("--:--")
         private set
@@ -69,147 +204,212 @@ class PlayerController(context: Context) {
         private set
     var isTuning by mutableStateOf(false)
         private set
-    var tuningProgress by mutableFloatStateOf(0f)
+
+    var audioUnavailable by mutableStateOf(false)
         private set
-
-    // Indica si el contenido actualmente activo no tiene audio reproducible
-    // (codec no compatible con ningun decodificador disponible).
-    private var player1AudioUnavailable by mutableStateOf(false)
-    private var player2AudioUnavailable by mutableStateOf(false)
-    val audioUnavailable: Boolean
-        get() = if (showPlayer1) player1AudioUnavailable else player2AudioUnavailable
-
     var channels: List<LiveStream> = emptyList()
-    private var nextReady = false
-    private var nextIdx = -1
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     val aspectModes = listOf("Auto", "16:9", "4:3", "Fill")
-
-    val activePlayer: ExoPlayer get() = if (showPlayer1) player1 else player2
-    val standbyPlayer: ExoPlayer get() = if (showPlayer1) player2 else player1
 
     // Detecta si, tras cambiar de pista, el grupo de audio existe pero no quedo
     // seleccionado (el decodificador no pudo reproducirlo), o si hay un error de
     // decodificacion. Reporta el resultado via el callback onResult.
     private fun audioFailureListener(onResult: (Boolean) -> Unit) = object : Player.Listener {
         override fun onTracksChanged(tracks: Tracks) {
-            val audioGroup = tracks.groups.firstOrNull { it.type == C.TRACK_TYPE_AUDIO }
-            val hasAudio = audioGroup != null
-            val audioPlayable = audioGroup?.isSelected == true
+            val audioGroups = tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
+            val hasAudio = audioGroups.isNotEmpty()
+            val audioPlayable = audioGroups.any { it.isSelected }
             onResult(hasAudio && !audioPlayable)
         }
         override fun onPlayerError(error: PlaybackException) {
-            if (error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||
-                error.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED ||
-                error.errorCode == PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED
-            ) {
+            val mime = (error as? androidx.media3.exoplayer.ExoPlaybackException)?.rendererFormat?.sampleMimeType
+            if (mime?.startsWith("audio/") == true && error.errorCode in listOf(
+                PlaybackException.ERROR_CODE_DECODER_INIT_FAILED, PlaybackException.ERROR_CODE_DECODING_FAILED,
+                PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED)) {
                 onResult(true)
             }
         }
     }
 
+    /** Retry a failing VP9/AV1 hardware decoder once with the bundled software renderer. */
+    fun useSoftwareVideo() {
+        if (softwareVideoPreferred) return
+        val previous = activePlayer
+        val item = previous.currentMediaItem ?: return
+        val position = previous.currentPosition.coerceAtLeast(0)
+        val play = previous.playWhenReady
+        val selection = previous.trackSelectionParameters
+        val playback = previous.playbackParameters
+        val gain = previous.volume
+        cancelPendingSeek()
+        previous.release()
+        softwareVideoPreferred = true
+        reachedReady = false
+        playbackError = null
+        bufferingPercent = null
+        activePlayer = createPlayer()
+        activePlayer.trackSelectionParameters = selection
+        activePlayer.playbackParameters = playback
+        activePlayer.volume = gain
+        activePlayer.setMediaItem(item, if (isLive) C.TIME_UNSET else position)
+        activePlayer.prepare()
+        activePlayer.playWhenReady = play
+    }
+
+    fun updateBufferingProgress() {
+        if (!isBuffering) { bufferingPercent = null; return }
+        val player = activePlayer
+        val remaining = if (!player.isCurrentMediaItemLive && player.duration > 0)
+            (player.duration - player.currentPosition).coerceAtLeast(0) else null
+        val target = if (reachedReady) BufferingProgress.REBUFFER_MS
+            else if (isLive) LiveStartPolicy.START_MS else BufferingProgress.START_MS
+        bufferingPercent = BufferingProgress.percent(player.totalBufferedDuration,
+            (target * player.playbackParameters.speed).toLong(), remaining)
+    }
+
     private fun forcePlay(player: ExoPlayer) {
         player.playWhenReady = true; player.play(); player.volume = 1f
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
             .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
             .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, false).build()
     }
 
-    fun playLive(streamId: String, name: String, icon: String) {
-        isLive = true; title = name; logo = icon; isPlaying = true; showPlayer1 = true
-        isTuning = true; tuningProgress = 0f
-        player1AudioUnavailable = false; player2AudioUnavailable = false
-        player2.stop(); player2.volume = 0f
-        player1.setMediaItem(MediaItem.fromUri(ApiConfig.liveUrl(streamId)))
-        player1.prepare(); forcePlay(player1)
-        scope.launch {
-            var w = 0; while (player1.playbackState != Player.STATE_READY && w < 10000) { delay(50); w += 50; tuningProgress = (w / 10000f).coerceAtMost(0.95f) }
-            tuningProgress = 1f; delay(100); isTuning = false
+    private fun playUrl(url: String, name: String, icon: String, live: Boolean) {
+        cancelPendingSeek()
+        scope.coroutineContext.cancelChildren()
+        canSeek = false
+        bufferedProgress = 0f
+        isLive = live
+        title = name
+        logo = icon
+        isPlaying = true
+        audioUnavailable = false
+        playbackError = null
+        isSeeking = false
+        progress = 0f
+        timeStr = "00:00"
+        durationStr = "--:--"
+        remainingStr = "--:--"
+        if (softwareVideoPreferred) {
+            activePlayer.release()
+            softwareVideoPreferred = false
+            activePlayer = createPlayer()
         }
-        // Precargar siguiente INMEDIATO
-        scope.launch { delay(30); preloadNext() }
+        isSoftwareVideo = false
+        videoNotice = null
+        reachedReady = false
+        bufferingPercent = null
+        isBuffering = true
+        isTuning = live
+        val item = MediaItem.Builder().setUri(url)
+            .setTag(if (live) LiveLoadControl.Kind.LIVE else null).build()
+        activePlayer.setMediaItem(item)
+        activePlayer.prepare()
+        forcePlay(activePlayer)
     }
 
-    private fun preloadNext() {
+    fun playLive(streamId: String, name: String, icon: String) =
+        playUrl(liveUrlResolver(streamId), name, icon, true)
+
+    fun zapNext() = zap(1)
+    fun zapPrev() = zap(-1)
+
+    private fun zap(direction: Int) {
         if (channels.isEmpty() || !isLive) return
-        val nIdx = (currentIdx + 1) % channels.size
-        val ch = channels[nIdx]
-        standbyPlayer.stop()
-        standbyPlayer.setMediaItem(MediaItem.fromUri(ApiConfig.liveUrl(ch.streamId.toString())))
-        standbyPlayer.prepare(); standbyPlayer.playWhenReady = true; standbyPlayer.play(); standbyPlayer.volume = 0f
-        // Esperar a que este listo
-        scope.launch {
-            var w = 0; while (standbyPlayer.playbackState != Player.STATE_READY && w < 30000) { delay(100); w += 100 }
-            if (standbyPlayer.playbackState == Player.STATE_READY) { nextReady = true; nextIdx = nIdx; Log.d("RandyTV", "PRELOAD LISTO: ${ch.name}") }
+        currentIdx = (currentIdx + direction + channels.size) % channels.size
+        val channel = channels[currentIdx]
+        playLive(channel.streamId.toString(), channel.name, channel.streamIcon)
+    }
+
+    fun playVOD(streamId: String, ext: String?, name: String) =
+        playUrl(ApiConfig.vodUrl(streamId, MediaContainer.extension(ext)), name, "", false)
+
+    fun playSeries(episodeId: String, ext: String?, name: String) =
+        playUrl(ApiConfig.seriesUrl(episodeId, MediaContainer.extension(ext)), name, "", false)
+
+    /** Swap an immutable matrix on the GL thread's next frame; never stop/reopen the stream. */
+    fun applyPictureMode(next: PictureMode) {
+        if ((isSoftwareVideo || pictureEffectsDisabled) && next != PictureMode.ORIGINAL) {
+            pictureNotice = "Este decodificador no permite aplicar filtros de imagen."
+            return
         }
+        pictureEffect.update(next)
+        pictureMode = next
+        preferences.edit().putString("picture_mode", next.name).apply()
+        pictureNotice = null
     }
 
-    fun zapNext() {
-        if (channels.isEmpty()) return
-        currentIdx = (currentIdx + 1) % channels.size
-        val ch = channels[currentIdx]
-
-        if (nextReady && nextIdx == currentIdx) {
-            // CAMBIO INSTANTANEO
-            forcePlay(standbyPlayer)
-            activePlayer.volume = 0f; activePlayer.stop()
-            title = ch.name; logo = ch.streamIcon
-            showPlayer1 = !showPlayer1; nextReady = false; nextIdx = -1
-            isTuning = false; tuningProgress = 1f
-            scope.launch { delay(30); preloadNext() }
-        } else {
-            // No precargado - cargar rapido en standby
-            isTuning = true; tuningProgress = 0f
-            standbyPlayer.stop()
-            standbyPlayer.setMediaItem(MediaItem.fromUri(ApiConfig.liveUrl(ch.streamId.toString())))
-            standbyPlayer.prepare(); standbyPlayer.playWhenReady = true; standbyPlayer.play(); standbyPlayer.volume = 0f
-            scope.launch {
-                var w = 0; while (standbyPlayer.playbackState != Player.STATE_READY && w < 10000) { delay(50); w += 50; tuningProgress = (w / 10000f).coerceAtMost(0.95f) }
-                tuningProgress = 1f
-                forcePlay(standbyPlayer); activePlayer.volume = 0f; activePlayer.stop()
-                title = ch.name; logo = ch.streamIcon
-                showPlayer1 = !showPlayer1; nextReady = false; nextIdx = -1
-                delay(30); isTuning = false; preloadNext()
-            }
-        }
-    }
-
-    fun zapPrev() {
-        if (channels.isEmpty()) return
-        currentIdx = (currentIdx - 1 + channels.size) % channels.size
-        val ch = channels[currentIdx]
-        nextReady = false; nextIdx = -1
-        isTuning = true; tuningProgress = 0f
-        standbyPlayer.stop()
-        standbyPlayer.setMediaItem(MediaItem.fromUri(ApiConfig.liveUrl(ch.streamId.toString())))
-        standbyPlayer.prepare(); standbyPlayer.playWhenReady = true; standbyPlayer.play(); standbyPlayer.volume = 0f
-        scope.launch {
-            var w = 0; while (standbyPlayer.playbackState != Player.STATE_READY && w < 10000) { delay(50); w += 50; tuningProgress = (w / 10000f).coerceAtMost(0.95f) }
-            tuningProgress = 1f
-            forcePlay(standbyPlayer); activePlayer.volume = 0f; activePlayer.stop()
-            title = ch.name; logo = ch.streamIcon
-            showPlayer1 = !showPlayer1
-            delay(30); isTuning = false; preloadNext()
-        }
-    }
-
-    fun playVOD(streamId: String, ext: String, name: String) {
-        stopAll(); isLive = false; title = name; isPlaying = true; showPlayer1 = true
-        player1AudioUnavailable = false
-        player1.setMediaItem(MediaItem.fromUri(ApiConfig.vodUrl(streamId, ext))); player1.prepare(); forcePlay(player1)
-    }
-
-    fun playSeries(episodeId: String, ext: String, name: String) {
-        stopAll(); isLive = false; title = name; isPlaying = true; showPlayer1 = true
-        player1AudioUnavailable = false
-        player1.setMediaItem(MediaItem.fromUri(ApiConfig.seriesUrl(episodeId, ext))); player1.prepare(); forcePlay(player1)
+    fun retry() {
+        playbackError = null
+        activePlayer.prepare()
+        activePlayer.play()
     }
 
     fun togglePause() { if (activePlayer.isPlaying) activePlayer.pause() else { activePlayer.playWhenReady = true; activePlayer.play() } }
-    fun seek(fraction: Float) { isSeeking = true; val d = activePlayer.duration; if (d > 0) { activePlayer.seekTo((fraction * d).toLong()); progress = fraction }; scope.launch { delay(600); isSeeking = false } }
-    fun jumpForward(seconds: Int = 30) { activePlayer.seekTo((activePlayer.currentPosition + seconds * 1000L).coerceAtMost(activePlayer.duration)) }
-    fun jumpBackward(seconds: Int = 15) { activePlayer.seekTo((activePlayer.currentPosition - seconds * 1000L).coerceAtLeast(0)) }
-    fun cycleAspect() { aspectMode = (aspectMode + 1) % aspectModes.size }
+    private fun queueSeek(targetMs: Long?) {
+        if (targetMs == null) return
+        isSeeking = true
+        seekMessage = "Ir a ${fmt(targetMs)}"
+        progress = targetMs.toFloat() / activePlayer.duration
+        timeStr = fmt(targetMs)
+        remainingStr = fmt((activePlayer.duration - targetMs).coerceAtLeast(0))
+        seekJob?.cancel()
+        seekJob = scope.launch { delay(300); commitSeek() }
+    }
+
+    private fun seekSupported(): Boolean {
+        if (isLive || activePlayer.duration <= 0 || !activePlayer.isCurrentMediaItemSeekable) {
+            seekMessage = "Este contenido todavía no permite adelantar."
+            return false
+        }
+        return true
+    }
+
+    fun seek(fraction: Float) {
+        if (seekSupported()) queueSeek(seekTarget.fraction(fraction, activePlayer.duration))
+    }
+
+    private fun jump(seconds: Int) {
+        if (seekSupported()) queueSeek(seekTarget.relative(
+            activePlayer.currentPosition, seconds * 1000L, activePlayer.duration))
+    }
+
+    fun jumpForward(seconds: Int = 10) = jump(seconds)
+    fun jumpBackward(seconds: Int = 10) = jump(-seconds)
+    fun remoteSeek(forward: Boolean, heldMs: Long) {
+        val seconds = SeekTarget.remoteStepSeconds(heldMs)
+        jump(if (forward) seconds else -seconds)
+    }
+
+    /** One actual decoder seek for a burst of remote events. Keeps pause/play intent. */
+    fun commitSeek() {
+        seekJob?.cancel()
+        seekJob = null
+        val targetMs = seekTarget.take() ?: return
+        if (!isLive && activePlayer.isCurrentMediaItemSeekable) {
+            activePlayer.setSeekParameters(
+                if (targetMs >= activePlayer.duration - 5000) SeekParameters.PREVIOUS_SYNC
+                else SeekParameters.CLOSEST_SYNC
+            )
+            activePlayer.seekTo(targetMs)
+            isSeeking = activePlayer.playbackState == Player.STATE_BUFFERING
+            seekMessage = null
+        } else {
+            isSeeking = false
+        }
+    }
+
+    fun cancelPendingSeek() {
+        seekJob?.cancel()
+        seekJob = null
+        seekTarget.clear()
+        isSeeking = false
+        seekMessage = null
+    }
+
+    fun selectAspect(index: Int) { aspectMode = index.coerceIn(aspectModes.indices) }
+    fun cycleAspect() { selectAspect((aspectMode + 1) % aspectModes.size) }
 
     fun getAudioTracks(): List<Pair<Int, String>> {
         val t = mutableListOf<Pair<Int, String>>(); var i = 0
@@ -225,13 +425,56 @@ class PlayerController(context: Context) {
             val label = if (!f.label.isNullOrEmpty() && !f.label!!.contains("/") && !f.label!!.contains("http")) f.label else lang ?: "Sub ${i+1}"
             t.add(Pair(i, label!!)); i++ } } }; return t }
 
-    fun setAudioTrack(index: Int) { var ai = 0; for (g in activePlayer.currentTracks.groups) { if (g.type == C.TRACK_TYPE_AUDIO) { for (j in 0 until g.length) { if (ai == index) { activePlayer.trackSelectionParameters = activePlayer.trackSelectionParameters.buildUpon().setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup, j)).build(); return }; ai++ } } } }
+    fun setAudioTrack(index: Int) {
+        var audioIndex = 0
+        for (group in activePlayer.currentTracks.groups) {
+            if (group.type != C.TRACK_TYPE_AUDIO) continue
+            for (track in 0 until group.length) {
+                if (audioIndex++ != index) continue
+                if (!group.isTrackSupported(track)) { audioUnavailable = true; return }
+                activePlayer.trackSelectionParameters = activePlayer.trackSelectionParameters.buildUpon()
+                    .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+                    .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, track)).build()
+                activePlayer.volume = 1f
+                audioUnavailable = false
+                return
+            }
+        }
+    }
+
     fun setSubtitleTrack(index: Int) { if (index < 0) { activePlayer.trackSelectionParameters = activePlayer.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).build(); return }; activePlayer.trackSelectionParameters = activePlayer.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build(); var si = 0; for (g in activePlayer.currentTracks.groups) { if (g.type == C.TRACK_TYPE_TEXT) { for (j in 0 until g.length) { if (si == index) { activePlayer.trackSelectionParameters = activePlayer.trackSelectionParameters.buildUpon().setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup, j)).build(); return }; si++ } } } }
 
-    fun updateProgress() { if (isSeeking) return; val d = activePlayer.duration; val p = activePlayer.currentPosition; if (d > 0) { progress = p.toFloat() / d.toFloat(); timeStr = fmt(p); durationStr = fmt(d) } }
-    private fun fmt(ms: Long): String { val s = (ms / 1000).toInt(); return String.format("%02d:%02d", s / 60, s % 60) }
+    fun updateProgress() {
+        val duration = activePlayer.duration
+        if (duration <= 0) return
+        bufferedProgress = (activePlayer.bufferedPosition.toFloat() / duration).coerceIn(0f, 1f)
+        durationStr = fmt(duration)
+        if (seekTarget.pendingMs != null) return
+        val position = activePlayer.currentPosition
+        progress = (position.toFloat() / duration).coerceIn(0f, 1f)
+        timeStr = fmt(position)
+        remainingStr = fmt((duration - position).coerceAtLeast(0))
+    }
+    private fun fmt(ms: Long): String {
+        val seconds = (ms.coerceAtLeast(0) / 1000)
+        return if (seconds >= 3600) String.format("%d:%02d:%02d", seconds / 3600, seconds / 60 % 60, seconds % 60)
+            else String.format("%02d:%02d", seconds / 60, seconds % 60)
+    }
 
-    fun stopAll() { player1.stop(); player2.stop(); player1.clearMediaItems(); player2.clearMediaItems(); nextReady = false; nextIdx = -1; isTuning = false }
-    fun stop() { stopAll(); isPlaying = false; isLive = false; title = ""; logo = ""; progress = 0f; timeStr = "00:00"; durationStr = "--:--" }
-    fun release() { scope.cancel(); player1.release(); player2.release() }
+    fun stopAll() {
+        cancelPendingSeek()
+        canSeek = false
+        bufferedProgress = 0f
+        scope.coroutineContext.cancelChildren()
+        activePlayer.stop()
+        activePlayer.clearMediaItems()
+        isTuning = false
+        isBuffering = false
+        bufferingPercent = null
+        isSeeking = false
+        playbackError = null
+    }
+    fun stop() { stopAll(); isPlaying = false; isLive = false; title = ""; logo = ""; progress = 0f; timeStr = "00:00"; durationStr = "--:--"; remainingStr = "--:--" }
+    fun release() { scope.cancel(); activePlayer.release() }
 }

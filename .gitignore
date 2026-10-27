@@ -33,3 +33,18 @@ google-services.json
 # Android Profiling
 *.hprof
 .DS_Store
+
+# Local/CI development signing key must never be committed.
+.ci-signing/
+
+.native-sources/
+decoder-ffmpeg/upstream/
+installer/
+app/src/main/assets/licenses/
+audio-sources/
+
+.native-video-sources/
+.native-video-build/
+decoder-vp9/upstream/
+decoder-av1/upstream/
+video-sources/

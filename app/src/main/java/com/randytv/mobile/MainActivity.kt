@@ -1,6 +1,13 @@
 package com.randytv.mobile
 
 import android.os.Bundle
+import android.annotation.SuppressLint
+import android.media.AudioManager
+import android.view.KeyEvent
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.Saver
+import com.google.gson.Gson
+import com.randytv.mobile.player.MediaVolumeKeys
 import android.util.Log
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -30,14 +37,18 @@ import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
     private var playerController: PlayerController? = null
-    private val repository = DataRepository()
+    private val repository by lazy {
+        androidx.lifecycle.ViewModelProvider(this)[com.randytv.mobile.data.repository.CatalogViewModel::class.java].repository
+    }
+    private var resumePlayback = false
     private var errorMsg: String = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        volumeControlStream = AudioManager.STREAM_MUSIC
         try { window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) } catch (_: Exception) {}
         try { playerController = PlayerController(this) } catch (e: Exception) { errorMsg = e.message ?: "Error"; Log.e("RandyTV", "ERROR: $errorMsg", e) }
-        try { repository.loadAll() } catch (_: Exception) {}
+
         setContent {
             val pc = playerController
             if (pc != null) { RandyTVApp(pc, repository) }
@@ -45,18 +56,31 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun onDestroy() { super.onDestroy(); try { playerController?.release() } catch (_: Exception) {}; try { repository.cancel() } catch (_: Exception) {} }
-    override fun onPause() { super.onPause(); try { playerController?.let { if (it.isPlaying) it.activePlayer.pause() } } catch (_: Exception) {} }
-    override fun onResume() { super.onResume(); try { playerController?.let { if (it.isPlaying) it.activePlayer.play() } } catch (_: Exception) {} }
+    // Public Activity key hook; AndroidX Core marks its inherited implementation restricted.
+    @SuppressLint("RestrictedApi")
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean =
+        MediaVolumeKeys.dispatch(this, event) || super.dispatchKeyEvent(event)
+
+    override fun onDestroy() { super.onDestroy(); try { playerController?.release() } catch (_: Exception) {} }
+    override fun onPause() {
+        resumePlayback = playerController?.activePlayer?.playWhenReady == true
+        playerController?.activePlayer?.pause()
+        super.onPause()
+    }
+    override fun onResume() {
+        super.onResume()
+        if (resumePlayback) playerController?.activePlayer?.play()
+        resumePlayback = false
+    }
 }
 
 @Composable
 fun RandyTVApp(playerController: PlayerController, repository: DataRepository) {
-    var currentScreen by remember { mutableStateOf("splash") }
-    var showSimpsons by remember { mutableStateOf(false) }
-    var selectedVod by remember { mutableStateOf<VodStream?>(null) }
-    var selectedSeries by remember { mutableStateOf<SeriesItem?>(null) }
-    var previousScreen by remember { mutableStateOf("home") }
+    var currentScreen by rememberSaveable { mutableStateOf("home") }
+    var showSimpsons by rememberSaveable { mutableStateOf(false) }
+    var selectedVod by rememberSaveable(stateSaver = vodNavigationSaver) { mutableStateOf<VodStream?>(null) }
+    var selectedSeries by rememberSaveable(stateSaver = seriesNavigationSaver) { mutableStateOf<SeriesItem?>(null) }
+    var previousScreen by rememberSaveable { mutableStateOf("home") }
 
     androidx.activity.compose.BackHandler(enabled = currentScreen != "home" && currentScreen != "splash") {
         when (currentScreen) {
@@ -67,8 +91,7 @@ fun RandyTVApp(playerController: PlayerController, repository: DataRepository) {
         }
     }
 
-    LaunchedEffect(repository.loadDone) { if (repository.loadDone) currentScreen = "home" }
-    LaunchedEffect(Unit) { delay(8000); if (currentScreen == "splash") currentScreen = "home" }
+    val catalogState = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
 
     when (currentScreen) {
         "splash" -> SplashScreen(progress = repository.loadProgress)
@@ -76,18 +99,20 @@ fun RandyTVApp(playerController: PlayerController, repository: DataRepository) {
             onNavigateLive = { showSimpsons = false; currentScreen = "live" },
             onNavigateVod = { currentScreen = "vod" },
             onNavigateSeries = { currentScreen = "series" },
-            onNavigateSimpsons = { showSimpsons = true; currentScreen = "live" }
+            onNavigateSimpsons = { showSimpsons = true; currentScreen = "live" },
+            statusMessage = repository.loadError,
+            onRetry = { repository.loadAll() }
         )
-        "live" -> ListScreen(type = ListType.LIVE, showSimpsons = showSimpsons, repository = repository,
+        "live" -> catalogState.SaveableStateProvider("live:$showSimpsons") { ListScreen(type = ListType.LIVE, showSimpsons = showSimpsons, repository = repository,
             onHome = { currentScreen = "home"; showSimpsons = false },
             onTapLive = { stream ->
                 // Determinar lista para zapping: si es canal 2MB, usar lista 2MB
                 val channelList = if (is2MBChannel(stream)) {
-                    get2MBList(repository.liveStreams)
+                    repository.liveIndex.groupItems(com.randytv.mobile.data.catalog.LOW_BITRATE)
                 } else if (showSimpsons) {
                     repository.simpsonsChannels
                 } else {
-                    repository.liveStreams.filter { it.categoryId == stream.categoryId }
+                    repository.liveIndex.groupItems(stream.categoryId.orEmpty())
                 }
 
                 playerController.channels = channelList
@@ -98,13 +123,13 @@ fun RandyTVApp(playerController: PlayerController, repository: DataRepository) {
                 playerController.playLive(stream.streamId.toString(), stream.name, stream.streamIcon)
                 previousScreen = "live"
                 currentScreen = "player"
-            }, onTapVod = {}, onTapSeries = {})
-        "vod" -> ListScreen(type = ListType.VOD, repository = repository,
+            }, onTapVod = {}, onTapSeries = {}) }
+        "vod" -> catalogState.SaveableStateProvider("vod") { ListScreen(type = ListType.VOD, repository = repository,
             onHome = { currentScreen = "home" }, onTapLive = {},
-            onTapVod = { stream -> selectedVod = stream; previousScreen = "vod"; currentScreen = "vodDetail" }, onTapSeries = {})
-        "series" -> ListScreen(type = ListType.SERIES, repository = repository,
+            onTapVod = { stream -> selectedVod = stream; previousScreen = "vod"; currentScreen = "vodDetail" }, onTapSeries = {}) }
+        "series" -> catalogState.SaveableStateProvider("series") { ListScreen(type = ListType.SERIES, repository = repository,
             onHome = { currentScreen = "home" }, onTapLive = {}, onTapVod = {},
-            onTapSeries = { series -> selectedSeries = series; previousScreen = "series"; currentScreen = "seriesDetail" })
+            onTapSeries = { series -> selectedSeries = series; previousScreen = "series"; currentScreen = "seriesDetail" }) }
         "vodDetail" -> selectedVod?.let { vod -> VodDetailScreen(stream = vod, onBack = { currentScreen = "vod" },
             onPlay = { playerController.playVOD(it.streamId.toString(), it.containerExtension, it.name); previousScreen = "vodDetail"; currentScreen = "player" }) }
         "seriesDetail" -> selectedSeries?.let { series -> SeriesDetailScreen(series = series, repository = repository, onBack = { currentScreen = "series" },
@@ -112,3 +137,9 @@ fun RandyTVApp(playerController: PlayerController, repository: DataRepository) {
         "player" -> PlayerScreen(playerController = playerController, onClose = { playerController.stop(); currentScreen = previousScreen })
     }
 }
+
+// Preserve the selected detail together with its route when Android recreates the Activity.
+private val vodNavigationSaver = Saver<VodStream?, String>(
+    save = { Gson().toJson(it) }, restore = { Gson().fromJson(it, VodStream::class.java) })
+private val seriesNavigationSaver = Saver<SeriesItem?, String>(
+    save = { Gson().toJson(it) }, restore = { Gson().fromJson(it, SeriesItem::class.java) })

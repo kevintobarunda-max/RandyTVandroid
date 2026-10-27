@@ -4,6 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -129,7 +131,7 @@ fun SeriesDetailScreen(series: SeriesItem, repository: DataRepository, onBack: (
                 val plot = omdb?.plot ?: series.plot
                 if (!plot.isNullOrEmpty()) { Text("Resena", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = FocusGreen); Spacer(Modifier.height(4.dp)); Text(plot, fontSize = 11.sp, color = Color(0xCCFFFFFF), lineHeight = 16.sp); Spacer(Modifier.height(10.dp)) }
                 if (allEpisodes.size > 1) { Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) { allEpisodes.keys.forEach { s -> SeasonChip("T$s", selectedSeason == s) { selectedSeason = s } } }; Spacer(Modifier.height(8.dp)) } else if (allEpisodes.isNotEmpty()) { Text("Temporada ${allEpisodes.keys.first()}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = FocusGreen); Spacer(Modifier.height(6.dp)) }
-                if (loading) { CircularProgressIndicator(color = FocusGreen, modifier = Modifier.size(24.dp)) } else { val eps = allEpisodes[selectedSeason] ?: emptyList(); Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) { eps.forEach { ep -> EpCard(ep) { onPlayEpisode(ep) } } } }
+                if (loading) { CircularProgressIndicator(color = FocusGreen, modifier = Modifier.size(24.dp)) } else { val eps = allEpisodes[selectedSeason] ?: emptyList(); LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) { itemsIndexed(eps, key = { index, ep -> "${ep.id}:$index" }) { _, ep -> EpCard(ep) { onPlayEpisode(ep) } } } }
                 Spacer(Modifier.height(12.dp))
                 val actors = omdb?.actors ?: series.cast
                 val list = (actors ?: "").split(",").map { it.trim() }.filter { it.isNotEmpty() }

@@ -31,7 +31,9 @@ fun HomeScreen(
     onNavigateLive: () -> Unit,
     onNavigateVod: () -> Unit,
     onNavigateSeries: () -> Unit,
-    onNavigateSimpsons: () -> Unit
+    onNavigateSimpsons: () -> Unit,
+    statusMessage: String? = null,
+    onRetry: () -> Unit = {}
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         // Fondo de imagen
@@ -60,6 +62,11 @@ fun HomeScreen(
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
                 Text("RANDY TV", fontSize = 48.sp, fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace, color = FocusGreen)
                 Text("STREAMING", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0x99FFFFFF))
+                statusMessage?.let { message ->
+                    Spacer(Modifier.height(16.dp))
+                    Text(message, color = Color.White, fontSize = 13.sp)
+                    TextButton(onClick = onRetry) { Text("Reintentar", color = FocusGreen) }
+                }
             }
             Spacer(modifier = Modifier.width(48.dp))
             // Botones derecha

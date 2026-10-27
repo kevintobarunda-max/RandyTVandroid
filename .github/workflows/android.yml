@@ -1,0 +1,231 @@
+name: Android verification
+on:
+  push:
+    branches: [main, codex/android12-low-memory]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools platforms;android-34 build-tools;34.0.0 ndk;26.1.10909125 cmake;3.22.1
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.2'
+          cache-read-only: false
+      - uses: actions/cache/restore@v4
+        id: native-cache
+        with:
+          path: |
+            .native-sources
+            decoder-ffmpeg/upstream
+          key: hy300-ffmpeg-6.0.1-media3-1.4.1-ndk26-audio-v1
+      - name: Build bundled software audio decoders
+        timeout-minutes: 30
+        run: bash scripts/build-audio-decoders.sh
+      - uses: actions/cache/save@v4
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        with:
+          path: |
+            .native-sources
+            decoder-ffmpeg/upstream
+          key: hy300-ffmpeg-6.0.1-media3-1.4.1-ndk26-audio-v1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HY300-audio-sources
+          path: audio-sources/
+      - uses: actions/cache/restore@v4
+        id: video-cache
+        with:
+          path: |
+            .native-video-sources
+            .native-video-build
+            decoder-vp9/upstream
+            decoder-av1/upstream
+          key: hy300-video-vpx1.15.2-gav1-0.20.0-ndk26-v1
+      - name: Build bundled video decoders
+        timeout-minutes: 30
+        run: bash scripts/build-video-decoders.sh
+      - uses: actions/cache/save@v4
+        if: steps.video-cache.outputs.cache-hit != 'true'
+        with:
+          path: |
+            .native-video-sources
+            .native-video-build
+            decoder-vp9/upstream
+            decoder-av1/upstream
+          key: hy300-video-vpx1.15.2-gav1-0.20.0-ndk26-v1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HY300-video-sources
+          path: video-sources/
+      - name: Restore development signing identity
+        uses: actions/cache@v4
+        with:
+          path: .ci-signing/hy300-development.keystore
+          key: randytv-hy300-development-signing-v2
+      - name: Prepare development key and seek fixture
+        timeout-minutes: 6
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .ci-signing app/src/androidTest/assets
+          if [ ! -f .ci-signing/hy300-development.keystore ]; then
+            keytool -genkeypair -keystore .ci-signing/hy300-development.keystore -storepass android -keypass android -alias hy300development -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=RandyTV HY300 Development"
+          fi
+          fixture_ffmpeg=$(command -v ffmpeg || true)
+          if [ -z "$fixture_ffmpeg" ]; then
+            python3 -m pip install --target "$RUNNER_TEMP/fixture-tools" --no-deps --disable-pip-version-check --timeout 30 --retries 1 imageio-ffmpeg==0.6.0
+            fixture_ffmpeg=$(PYTHONPATH="$RUNNER_TEMP/fixture-tools" python3 -c 'import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())')
+          fi
+          timeout 60 "$fixture_ffmpeg" -nostdin -y -hide_banner -loglevel error -filter_threads 1 -f lavfi -i "testsrc2=size=320x180:rate=24:duration=90" -f lavfi -i "sine=frequency=440:sample_rate=48000:duration=90" -f lavfi -i "sine=frequency=880:sample_rate=48000:duration=90" -map 0:v -map 1:a -map 2:a -c:v libx264 -threads:v 2 -preset ultrafast -crf 35 -g 24 -profile:v baseline -level 3.0 -pix_fmt yuv420p -c:a aac -ac 2 -b:a 64k -metadata:s:a:0 language=spa -metadata:s:a:1 language=eng -movflags +faststart app/src/androidTest/assets/seek-test.mp4
+          timeout 30 "$fixture_ffmpeg" -nostdin -y -hide_banner -loglevel error -i app/src/androidTest/assets/seek-test.mp4 -t 12 -map 0:v -map 0:a:0 -c copy -f mpegts app/src/androidTest/assets/live-test.ts
+          mkdir -p app/src/androidTest/assets/hls
+          timeout 30 "$fixture_ffmpeg" -nostdin -y -hide_banner -loglevel error -i app/src/androidTest/assets/seek-test.mp4 -t 12 -map 0:v -map 0:a:0 -c copy -f hls -hls_time 2 -hls_list_size 0 -hls_segment_filename app/src/androidTest/assets/hls/segment%d.ts app/src/androidTest/assets/hls/index.m3u8
+          timeout 30 "$fixture_ffmpeg" -nostdin -y -hide_banner -loglevel error -filter_threads 1 -f lavfi -i "color=c=0x404040:size=320x180:rate=24:duration=20" -f lavfi -i "sine=frequency=440:sample_rate=48000:duration=20" -c:v libx264 -threads:v 2 -preset ultrafast -pix_fmt yuv420p -g 24 -c:a aac -ac 2 -movflags +faststart app/src/androidTest/assets/picture-test.mp4
+          for codec in ac3 eac3 dca truehd mp3 mp2 flac opus vorbis; do
+            timeout 30 "$fixture_ffmpeg" -nostdin -y -hide_banner -loglevel error -filter_threads 1 -f lavfi -i "sine=frequency=440:sample_rate=48000:duration=4" -c:a "$codec" -strict -2 -ac 2 "app/src/androidTest/assets/audio-$codec.mka"
+          done
+          timeout 30 "$fixture_ffmpeg" -nostdin -y -hide_banner -loglevel error -filter_threads 1 -f lavfi -i "sine=frequency=440:sample_rate=48000:duration=4" -c:a alac -ac 2 app/src/androidTest/assets/audio-alac.m4a
+          timeout 30 "$fixture_ffmpeg" -nostdin -y -hide_banner -loglevel error -filter_threads 1 -f lavfi -i "sine=frequency=600:sample_rate=48000:duration=4" -af "pan=5.1|FC=c0" -c:a ac3 app/src/androidTest/assets/audio-ac3-surround.mka
+          timeout 30 "$fixture_ffmpeg" -nostdin -y -hide_banner -loglevel error -filter_threads 1 -f lavfi -i "sine=frequency=600:sample_rate=48000:duration=4" -af "pan=5.1|FC=c0" -c:a truehd -strict -2 app/src/androidTest/assets/audio-truehd-surround.mka
+          timeout 90 "$fixture_ffmpeg" -nostdin -y -hide_banner -loglevel error -filter_threads 1 -f lavfi -i "testsrc2=size=320x180:rate=24:duration=8" -f lavfi -i "sine=frequency=440:sample_rate=48000:duration=8" -c:v libvpx-vp9 -threads:v 2 -deadline realtime -cpu-used 8 -b:v 300k -g 24 -pix_fmt yuv420p -c:a libopus -ac 2 app/src/androidTest/assets/video-vp9.webm
+          timeout 90 "$fixture_ffmpeg" -nostdin -y -hide_banner -loglevel error -filter_threads 1 -f lavfi -i "testsrc2=size=320x180:rate=24:duration=8" -f lavfi -i "sine=frequency=440:sample_rate=48000:duration=8" -c:v libaom-av1 -threads:v 2 -cpu-used 8 -crf 40 -b:v 0 -g 24 -pix_fmt yuv420p -c:a aac -ac 2 app/src/androidTest/assets/video-av1.mkv
+      - run: gradle :app:testDebugUnitTest :app:assembleDebug :app:assembleProjector :app:assembleDebugAndroidTest --no-daemon
+      - name: Search benchmark result
+        run: find app/build/test-results -name 'TEST-*.xml' -exec grep 'CATALOG_BENCHMARK' {} +
+      - name: Verify HY300 installer
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk=app/build/outputs/apk/projector/app-projector.apk
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --min-sdk-version 31 "$apk"
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging "$apk" > /tmp/apk-badging.txt
+          cat /tmp/apk-badging.txt
+          grep -q "package: name='com.randytv.mobile.hy300'" /tmp/apk-badging.txt
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump xmltree "$apk" AndroidManifest.xml > /tmp/apk-manifest.txt
+          if grep -E 'android:(testOnly|debuggable).*0xffffffff' /tmp/apk-manifest.txt; then
+            exit 1
+          fi
+          for abi in armeabi-v7a arm64-v8a x86_64; do
+            unzip -l "$apk" "lib/$abi/libffmpegJNI.so" | grep -q 'libffmpegJNI.so'
+            unzip -l "$apk" "lib/$abi/libvpxV2JNI.so" | grep -q 'libvpxV2JNI.so'
+            unzip -l "$apk" "lib/$abi/libgav1JNI.so" | grep -q 'libgav1JNI.so'
+          done
+          mkdir -p installer
+          cp "$apk" installer/RandyTV-HY300-1.5.5.apk
+          cp THIRD_PARTY_AUDIO.md THIRD_PARTY_VIDEO.md installer/
+          sha256sum installer/RandyTV-HY300-1.5.5.apk > installer/SHA256.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HY300-seek-test-apks
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+      - name: Lint
+        run: |
+          gradle :app:lintDebug :app:lintProjector --no-daemon || {
+            cat app/build/intermediates/lint_intermediate_text_report/debug/lint-results-debug.txt
+            exit 1
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RandyTV-HY300-instalar
+          path: installer/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: RandyTV-reports
+          path: app/build/reports/
+          if-no-files-found: warn
+  install-android12:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/download-artifact@v4
+        with:
+          name: RandyTV-HY300-instalar
+          path: installer
+      - uses: actions/download-artifact@v4
+        with:
+          name: HY300-seek-test-apks
+          path: seek-apks
+      - uses: actions/download-artifact@v4
+        with:
+          name: RandyTV-HY300-instalar
+          path: previous
+          run-id: 40422277262
+          github-token: ${{ github.token }}
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Install and reinstall on Android 12
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 31
+          target: default
+          arch: x86_64
+          ram-size: 2048M
+          disk-size: 4096M
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: |
+            adb install previous/RandyTV-HY300-1.5.4.apk
+            adb install -r installer/RandyTV-HY300-1.5.5.apk
+            adb install -r installer/RandyTV-HY300-1.5.5.apk
+            adb shell pm path com.randytv.mobile.hy300
+            mkdir -p startup
+            adb shell svc wifi disable
+            adb shell svc data disable
+            adb shell am force-stop com.randytv.mobile.hy300
+            adb logcat -c
+            adb shell am start -W -n com.randytv.mobile.hy300/com.randytv.mobile.MainActivity
+            sleep 12
+            adb logcat -d -s RandyTVAudio:I > startup/native-audio.txt
+            grep -q "Software audio ready=true" startup/native-audio.txt
+            adb logcat -d -s RandyTVVideo:I > startup/native-video.txt
+            grep -q "Software video VP9=true AV1=true" startup/native-video.txt
+            adb logcat -b crash -d > startup/crash.txt
+            cat startup/crash.txt
+            adb shell uiautomator dump /sdcard/window.xml
+            adb pull /sdcard/window.xml startup/window.xml
+            adb exec-out screencap -p > startup/home.png
+            adb shell pidof com.randytv.mobile.hy300
+            grep -q 'TV en Vivo' startup/window.xml
+            if grep -q 'Process: com.randytv.mobile.hy300' startup/crash.txt; then exit 1; fi
+            adb shell input keyevent 20
+            adb shell input keyevent 23
+            sleep 2
+            adb shell pidof com.randytv.mobile.hy300
+            adb shell am force-stop com.randytv.mobile.hy300
+            adb shell am start -W -n com.randytv.mobile.hy300/com.randytv.mobile.MainActivity
+            sleep 10
+            adb shell pidof com.randytv.mobile.hy300
+            adb shell am force-stop com.randytv.mobile.hy300
+            adb install seek-apks/debug/app-debug.apk
+            adb install seek-apks/androidTest/debug/app-debug-androidTest.apk
+            adb shell am instrument -w -e class com.randytv.mobile.player.SeekPlaybackTest,com.randytv.mobile.player.CatalogUiTest,com.randytv.mobile.player.AudioPlaybackTest,com.randytv.mobile.player.MainNavigationTest,com.randytv.mobile.player.SoftwareAudioTest,com.randytv.mobile.player.SoftwareVideoTest,com.randytv.mobile.player.BufferingPlaybackTest,com.randytv.mobile.player.LiveZapTest,com.randytv.mobile.player.HlsPlaybackTest,com.randytv.mobile.player.PicturePanelTest com.randytv.mobile.test/androidx.test.runner.AndroidJUnitRunner | tee startup/seek-test.txt
+            adb pull /sdcard/Android/data/com.randytv.mobile/files/picture-proof startup/picture-proof || true
+            adb logcat -d -s System.out:I ExoPlayerImplInternal:E > startup/seek-logcat.txt
+            cat startup/seek-logcat.txt
+            grep -q 'OK (10 tests)' startup/seek-test.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: HY300-startup-verified
+          path: startup/

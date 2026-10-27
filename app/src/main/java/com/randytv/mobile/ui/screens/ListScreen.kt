@@ -1,195 +1,352 @@
 package com.randytv.mobile.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.randytv.mobile.data.catalog.*
 import com.randytv.mobile.data.model.*
 import com.randytv.mobile.data.repository.DataRepository
 import com.randytv.mobile.ui.components.CachedImage
 import com.randytv.mobile.ui.components.FocusGreen
 import com.randytv.mobile.ui.components.tvFocusable
+import kotlinx.coroutines.delay
 
 enum class ListType { LIVE, VOD, SERIES }
 
-private val adultKeywords = listOf("xxx", "adult", "porn", "erotic", "playboy", "hustle", "penthouse", "brazzers", "18+", "sexy", "venus", "desnud", "vivid")
-private fun isAdult(name: String): Boolean { val l = name.lowercase(); return adultKeywords.any { l.contains(it) } }
-fun is2MBChannel(stream: LiveStream): Boolean { val l = stream.name.lowercase(); return l.contains("2mb") || l.contains("| 2") || l.contains("|2") || l.contains(" 2 mb") || l.contains("[2]") || l.contains("(2)") || l.contains("2 mb") || l.contains("sd|") || l.contains("|sd") || l.contains(" sd ") }
-fun get2MBList(streams: List<LiveStream>): List<LiveStream> = streams.filter { !isAdult(it.name) && is2MBChannel(it) }.sortedBy { it.name.lowercase() }
+// Kept for the live zapping route; no hidden title/word exclusions.
+fun is2MBChannel(stream: LiveStream): Boolean = ChannelGroups.isLowBitrate(stream)
+fun get2MBList(streams: List<LiveStream>): List<LiveStream> =
+    streams.filter(ChannelGroups::isLowBitrate).sortedBy { CatalogText.normalize(it.name) }
 
-private fun is24HChannel(stream: LiveStream): Boolean {
-    val l = stream.name.lowercase()
-    return l.contains("24") || l.contains("24h") || l.contains("24/7") || l.contains("24 h")
-}
-
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun ListScreen(type: ListType, showSimpsons: Boolean = false, repository: DataRepository,
-    onHome: () -> Unit, onTapLive: (LiveStream) -> Unit, onTapVod: (VodStream) -> Unit, onTapSeries: (SeriesItem) -> Unit) {
-    var selectedCat by remember { mutableStateOf("2mb") }
-    var searchText by remember { mutableStateOf("") }
-    var searchOpen by remember { mutableStateOf(false) }
+    onHome: () -> Unit, onTapLive: (LiveStream) -> Unit, onTapVod: (VodStream) -> Unit,
+    onTapSeries: (SeriesItem) -> Unit) {
+    var selectedCat by rememberSaveable(type, showSimpsons) {
+        mutableStateOf(if (showSimpsons) SIMPSONS else if (type == ListType.LIVE) LOW_BITRATE else ALL_CATEGORIES)
+    }
+    var searchText by rememberSaveable(type, showSimpsons) { mutableStateOf("") }
+    var searchOpen by rememberSaveable(type, showSimpsons) { mutableStateOf(false) }
+    var requestSearchFocus by remember { mutableStateOf(false) }
+    var restoreSearchFocus by remember { mutableStateOf(false) }
+    var requestResultsFocus by remember { mutableStateOf(false) }
+    val fieldFocus = remember { FocusRequester() }
+    val searchButtonFocus = remember { FocusRequester() }
+    val firstResultFocus = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
 
-    Column(modifier = Modifier.fillMaxSize().background(Color.Black)) {
-        // Top bar
-        Row(modifier = Modifier.fillMaxWidth().background(Color(0xFF111111)).padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onHome, modifier = Modifier.size(36.dp).focusable()) { Icon(Icons.Default.Home, "Home", tint = FocusGreen, modifier = Modifier.size(20.dp)) }
-            Spacer(modifier = Modifier.width(10.dp))
-            Text(when { showSimpsons -> "SIMPSONS"; type == ListType.LIVE -> "TV EN VIVO"; type == ListType.VOD -> "PELICULAS"; else -> "SERIES" }, fontSize = 14.sp, fontWeight = FontWeight.Black, color = if (showSimpsons) Color.Yellow else FocusGreen)
-            Spacer(modifier = Modifier.weight(1f))
+    LaunchedEffect(searchOpen, requestSearchFocus, restoreSearchFocus) {
+        if (searchOpen && requestSearchFocus) {
+            withFrameNanos { }
+            fieldFocus.requestWhenAttached()
+            keyboard?.show()
+            requestSearchFocus = false
+        } else if (!searchOpen && restoreSearchFocus) {
+            withFrameNanos { }
+            searchButtonFocus.requestWhenAttached()
+            restoreSearchFocus = false
+        }
+    }
 
-            // Buscar - solo se abre si se selecciona
+    BackHandler(enabled = searchOpen) {
+        searchText = ""
+        searchOpen = false
+        requestResultsFocus = false
+        restoreSearchFocus = true
+        keyboard?.hide()
+    }
+
+    val onCategory: (String) -> Unit = {
+        selectedCat = it
+        searchText = ""
+        requestResultsFocus = false
+        keyboard?.hide()
+    }
+    Column(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black)) {
+        Row(Modifier.fillMaxWidth().background(androidx.compose.ui.graphics.Color(0xFF111111))
+            .padding(horizontal = 14.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onHome) { Icon(Icons.Default.Home, "Inicio", tint = FocusGreen) }
+            Text(if (showSimpsons) "SIMPSONS" else when (type) {
+                ListType.LIVE -> "TV EN VIVO"; ListType.VOD -> "PELÍCULAS"; ListType.SERIES -> "SERIES"
+            }, color = FocusGreen, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.weight(1f))
             if (searchOpen) {
                 OutlinedTextField(
                     value = searchText,
-                    onValueChange = { searchText = it },
-                    placeholder = { Text("...", fontSize = 11.sp, color = Color.Gray) },
-                    modifier = Modifier.width(180.dp).height(36.dp),
-                    textStyle = LocalTextStyle.current.copy(fontSize = 11.sp, color = Color.White),
+                    onValueChange = { searchText = it; requestResultsFocus = false },
+                    placeholder = { Text("Buscar por nombre", fontSize = 13.sp, color = androidx.compose.ui.graphics.Color.LightGray) },
                     singleLine = true,
-                    shape = RoundedCornerShape(6.dp),
-                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = FocusGreen, unfocusedBorderColor = Color(0x33FFFFFF), focusedContainerColor = Color(0x1AFFFFFF), unfocusedContainerColor = Color(0x0DFFFFFF))
+                    modifier = Modifier.widthIn(max = 300.dp).heightIn(min = 56.dp)
+                        .focusRequester(fieldFocus).testTag("catalog_search"),
+                    textStyle = LocalTextStyle.current.copy(color = androidx.compose.ui.graphics.Color.White, fontSize = 14.sp),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search, autoCorrect = false),
+                    keyboardActions = KeyboardActions(onSearch = {
+                        keyboard?.hide()
+                        requestResultsFocus = true
+                    }),
+                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = FocusGreen, cursorColor = FocusGreen,
+                        unfocusedBorderColor = androidx.compose.ui.graphics.Color.Gray,
+                        focusedTextColor = androidx.compose.ui.graphics.Color.White,
+                        unfocusedTextColor = androidx.compose.ui.graphics.Color.White)
                 )
-                Spacer(Modifier.width(6.dp))
-                IconButton(onClick = { searchOpen = false; searchText = "" }, modifier = Modifier.size(28.dp)) {
-                    Text("X", fontSize = 12.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
-                }
+                IconButton(onClick = {
+                    searchText = ""; searchOpen = false
+                    requestResultsFocus = false; restoreSearchFocus = true
+                    keyboard?.hide()
+                }) { Icon(Icons.Default.Close, "Cerrar búsqueda", tint = androidx.compose.ui.graphics.Color.White) }
             } else {
-                Box(
-                    modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(Color(0x0DFFFFFF))
-                        .clickable { searchOpen = true }.focusable()
-                        .onFocusChanged { if (it.isFocused) searchOpen = true }
-                        .padding(horizontal = 10.dp, vertical = 6.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Search, null, tint = Color.Gray, modifier = Modifier.size(14.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("Buscar", fontSize = 10.sp, color = Color.Gray)
-                    }
+                IconButton(onClick = { searchOpen = true; requestSearchFocus = true },
+                    modifier = Modifier.focusRequester(searchButtonFocus)) {
+                    Icon(Icons.Default.Search, "Buscar", tint = FocusGreen)
                 }
             }
         }
 
-        if (showSimpsons) {
-            // Memoizado: la lista de Simpsons no cambia salvo que cambie el repositorio
-            val simpsonsFiltered = remember(repository.simpsonsChannels) {
-                repository.simpsonsChannels.filter { !isAdult(it.name) }
+        when (type) {
+            ListType.LIVE -> CatalogSection(
+                index = repository.liveIndex, categories = repository.liveCategories,
+                selectedCat = selectedCat, onCategory = onCategory, query = searchText,
+                loading = repository.liveLoading, error = repository.liveError,
+                onRetry = { repository.reloadLive() }, kind = if (showSimpsons) "Simpsons" else "canales",
+                extras = if (showSimpsons) listOf(Category(SIMPSONS, "Simpsons"))
+                    else listOf(Category(LOW_BITRATE, "2MB"), Category(ROUND_THE_CLOCK, "24 Horas")),
+                onlyExtras = showSimpsons, searchAll = !showSimpsons, square = true,
+                title = { it.name }, image = { it.streamIcon }, rating = { null }, onTap = onTapLive,
+                firstResultFocus = firstResultFocus, requestResultsFocus = requestResultsFocus,
+                onResultsFocused = { requestResultsFocus = false }, modifier = Modifier.weight(1f))
+            ListType.VOD -> CatalogSection(
+                index = repository.vodIndex, categories = repository.vodCategories,
+                selectedCat = selectedCat, onCategory = onCategory, query = searchText,
+                loading = repository.vodLoading, error = repository.vodError,
+                onRetry = { repository.reloadVod() }, kind = "películas",
+                title = { it.name }, image = { it.getImageUrl() }, rating = { it.getRating() }, onTap = onTapVod,
+                firstResultFocus = firstResultFocus, requestResultsFocus = requestResultsFocus,
+                onResultsFocused = { requestResultsFocus = false }, modifier = Modifier.weight(1f))
+            ListType.SERIES -> CatalogSection(
+                index = repository.seriesIndex, categories = repository.seriesCategories,
+                selectedCat = selectedCat, onCategory = onCategory, query = searchText,
+                loading = repository.seriesLoading, error = repository.seriesError,
+                onRetry = { repository.reloadSeries() }, kind = "series",
+                title = { it.name }, image = { it.getImageUrl() }, rating = { it.getRating() }, onTap = onTapSeries,
+                firstResultFocus = firstResultFocus, requestResultsFocus = requestResultsFocus,
+                onResultsFocused = { requestResultsFocus = false }, modifier = Modifier.weight(1f))
+        }
+    }
+}
+
+@Stable
+private data class CatalogResult<T>(
+    val source: CatalogIndex<T>? = null, val category: String = "", val query: String = "",
+    val rows: List<CatalogEntry<T>> = emptyList()
+)
+
+@Composable
+private fun <T> CatalogSection(
+    index: CatalogIndex<T>, categories: List<Category>, selectedCat: String,
+    onCategory: (String) -> Unit, query: String, loading: Boolean, error: String?,
+    onRetry: () -> Unit, kind: String, title: (T) -> String?, image: (T) -> String?,
+    rating: (T) -> Double?, onTap: (T) -> Unit, firstResultFocus: FocusRequester,
+    requestResultsFocus: Boolean, onResultsFocused: () -> Unit, modifier: Modifier,
+    extras: List<Category> = emptyList(), onlyExtras: Boolean = false,
+    searchAll: Boolean = true, square: Boolean = false
+) {
+    val mergedCategories = remember(index, categories) { index.categories(categories) }
+    LaunchedEffect(index, mergedCategories, selectedCat, loading) {
+        if (!loading && selectedCat != ALL_CATEGORIES &&
+            extras.none { it.categoryId == selectedCat } &&
+            mergedCategories.none { it.categoryId == selectedCat }) onCategory(ALL_CATEGORIES)
+    }
+    val result by produceState(CatalogResult<T>(), index, selectedCat, query, searchAll) {
+        val cached = index.immediate(selectedCat, query, searchAll)
+        if (cached != null) {
+            value = CatalogResult(index, selectedCat, query, cached)
+        } else {
+            // One frame coalesces key repeats; cached searches/categories have no delay.
+            delay(16)
+            value = CatalogResult(index, selectedCat, query, index.query(selectedCat, query, searchAll))
+        }
+    }
+    val busy = result.source !== index || result.category != selectedCat || result.query != query
+    val gridState = rememberLazyGridState()
+    var lastFilter by rememberSaveable { mutableStateOf(selectedCat + "|" + query) }
+    LaunchedEffect(result, busy) {
+        val filter = selectedCat + "|" + query
+        if (!busy && lastFilter != filter) {
+            gridState.scrollToItem(0)
+            lastFilter = filter
+        }
+    }
+    LaunchedEffect(requestResultsFocus, result, busy) {
+        if (requestResultsFocus && !busy && result.rows.isNotEmpty()) {
+            gridState.scrollToItem(0)
+            withFrameNanos { }
+            firstResultFocus.requestWhenAttached()
+            onResultsFocused()
+        }
+    }
+
+    Column(modifier.fillMaxWidth()) {
+        LazyRow(Modifier.fillMaxWidth().background(androidx.compose.ui.graphics.Color(0xFF0A0A0A)),
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (!onlyExtras) item(key = ALL_CATEGORIES) {
+                TVCatChip("Todos (${index.entries.size})", (selectedCat == ALL_CATEGORIES || (query.isNotBlank() && searchAll))) { onCategory(ALL_CATEGORIES) }
             }
-            LazyVerticalGrid(columns = GridCells.Fixed(6), contentPadding = PaddingValues(14.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                items(simpsonsFiltered) { ch -> TVCard(ch.name, ch.streamIcon, true) { onTapLive(ch) } }
+            items(extras, key = { it.categoryId }) { category ->
+                TVCatChip("${category.categoryName} (${index.count(category.categoryId)})",
+                    (selectedCat == category.categoryId && (query.isBlank() || !searchAll))) { onCategory(category.categoryId) }
             }
-        } else if (type == ListType.LIVE) {
-            // Categorias: memoizadas, solo se recalculan si cambia la lista base del repo
-            val categories = remember(repository.liveCategories) {
-                repository.liveCategories.filter { cat -> !adultKeywords.any { kw -> cat.categoryName.lowercase().contains(kw) } }
+            if (!onlyExtras) items(mergedCategories, key = { it.categoryId }) { category ->
+                TVCatChip("${category.categoryName} (${index.count(category.categoryId)})",
+                    (selectedCat == category.categoryId && (query.isBlank() || !searchAll))) { onCategory(category.categoryId) }
             }
-            Row(modifier = Modifier.fillMaxWidth().background(Color(0xFF0A0A0A)).horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                TVCatChip("2MB", selectedCat == "2mb") { selectedCat = "2mb" }
-                TVCatChip("24 Horas", selectedCat == "24h") { selectedCat = "24h" }
-                categories.forEach { cat -> TVCatChip(cat.categoryName, selectedCat == cat.categoryId) { selectedCat = cat.categoryId } }
+        }
+        Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Text(if (busy) "Buscando…" else if (result.rows.size == 1) "1 título" else "${result.rows.size} títulos",
+                color = androidx.compose.ui.graphics.Color.White, fontSize = 12.sp)
+            if (query.isNotBlank() && searchAll) {
+                Text(if (kind == "canales") " · En todos los canales" else " · En todas las $kind", color = FocusGreen, fontSize = 11.sp)
             }
-            // Memoizado: filtrar+ordenar la lista completa de canales solo cuando
-            // cambia la categoria seleccionada o la lista base del repo (no en cada
-            // recomposicion / cada letra escrita en el buscador)
-            val currentList = remember(selectedCat, repository.liveStreams) {
-                when (selectedCat) {
-                    "2mb" -> get2MBList(repository.liveStreams)
-                    "24h" -> repository.liveStreams.filter { !isAdult(it.name) && is24HChannel(it) }.sortedBy { it.name.lowercase() }
-                    else -> repository.liveStreams.filter { it.categoryId == selectedCat && !isAdult(it.name) }
-                }
+            Spacer(Modifier.weight(1f))
+            TextButton(onClick = onRetry, enabled = !loading) { Text("Actualizar", color = FocusGreen) }
+        }
+        if (loading) {
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth().height(2.dp), color = FocusGreen)
+            Text("Cargando $kind… ${index.entries.size} títulos disponibles",
+                modifier = Modifier.padding(horizontal = 14.dp), fontSize = 11.sp,
+                color = androidx.compose.ui.graphics.Color.LightGray)
+        } else {
+            // Keep grid dimensions fixed while queries start/finish; avoid resizing every poster.
+            Box(Modifier.fillMaxWidth().height(2.dp)) {
+                if (busy) LinearProgressIndicator(modifier = Modifier.fillMaxSize(), color = FocusGreen)
             }
-            // Solo el filtro de texto (mas liviano) se recalcula al escribir
-            val searchFiltered = remember(currentList, searchText) {
-                if (searchText.isNotEmpty()) currentList.filter { it.name.contains(searchText, true) } else currentList
+        }
+        error?.let {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Text(it, color = androidx.compose.ui.graphics.Color(0xFFFFD180), fontSize = 12.sp,
+                    modifier = Modifier.weight(1f))
+                TextButton(onClick = onRetry) { Text("Reintentar", color = FocusGreen) }
             }
-            LazyVerticalGrid(columns = GridCells.Fixed(7), contentPadding = PaddingValues(14.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                items(searchFiltered.take(150)) { s -> TVCard(s.name, s.streamIcon, true) { onTapLive(s) } }
+        }
+        if (!busy && !loading && result.rows.isEmpty()) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(if (error != null) "No hay títulos descargados. Pulsa Reintentar."
+                    else if (query.isNotBlank()) "No se encontraron títulos con ese nombre."
+                    else "El servidor no devolvió títulos para esta selección.",
+                    color = androidx.compose.ui.graphics.Color.LightGray)
             }
         } else {
-            // VOD y Series - categorias navegables con control
-            val categories = remember(type, repository.vodCategories, repository.seriesCategories) {
-                when (type) { ListType.VOD -> repository.vodCategories; else -> repository.seriesCategories }
-                    .filter { cat -> !adultKeywords.any { kw -> cat.categoryName.lowercase().contains(kw) } }
-            }
-            if (selectedCat == "2mb" || selectedCat == "24h") selectedCat = categories.firstOrNull()?.categoryId ?: ""
-            Row(modifier = Modifier.fillMaxWidth().background(Color(0xFF0A0A0A)).horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                categories.forEach { cat -> TVCatChip(cat.categoryName, selectedCat == cat.categoryId) { selectedCat = cat.categoryId } }
-            }
-            when (type) {
-                ListType.VOD -> {
-                    val f = remember(repository.vodStreams, selectedCat, searchText) {
-                        filterVod(repository.vodStreams, selectedCat, searchText)
-                    }
-                    LazyVerticalGrid(columns = GridCells.Fixed(6), contentPadding = PaddingValues(14.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                        items(f) { s -> TVCard(s.name, s.getImageUrl(), false, s.getRating()) { onTapVod(s) } }
-                    }
-                }
-                else -> {
-                    val f = remember(repository.seriesList, selectedCat, searchText) {
-                        filterSeries(repository.seriesList, selectedCat, searchText)
-                    }
-                    LazyVerticalGrid(columns = GridCells.Fixed(6), contentPadding = PaddingValues(14.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                        items(f) { s -> TVCard(s.name, s.getImageUrl(), false, s.getRating()) { onTapSeries(s) } }
-                    }
-                }
+            BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+                // Reserve space for captions and padding even on short landscape windows.
+                val artworkHeight = (maxHeight - 64.dp).coerceIn(56.dp, if (square) 80.dp else 138.dp)
+                CatalogGrid(result, gridState, square, artworkHeight, firstResultFocus,
+                    title, image, rating, onTap)
             }
         }
     }
 }
 
-@Composable private fun TVCatChip(name: String, selected: Boolean, onClick: () -> Unit) {
+// Stable result identity lets Compose skip all visible cards while only the query changes.
+@Composable
+private fun <T> CatalogGrid(result: CatalogResult<T>, gridState: LazyGridState,
+    square: Boolean, artworkHeight: Dp, firstResultFocus: FocusRequester,
+    title: (T) -> String?, image: (T) -> String?, rating: (T) -> Double?, onTap: (T) -> Unit
+) {
+                LazyVerticalGrid(columns = GridCells.Adaptive(if (square) 96.dp else 112.dp),
+                    state = gridState, modifier = Modifier.fillMaxSize().testTag("catalog_grid"),
+                    contentPadding = PaddingValues(14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    items(result.rows, key = { it.rowKey }, contentType = { if (square) "channel" else "poster" }) { entry ->
+                        TVCard(title(entry.item).orEmpty().ifBlank { "Título sin nombre" },
+                            image(entry.item).orEmpty(), square, rating(entry.item), artworkHeight = artworkHeight,
+                            modifier = if (entry.rowKey == result.rows.firstOrNull()?.rowKey)
+                                Modifier.focusRequester(firstResultFocus) else Modifier) { onTap(entry.item) }
+                    }
+                }
+}
+
+@Composable
+private fun TVCatChip(name: String, selected: Boolean, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
-    Box(modifier = Modifier.clip(RoundedCornerShape(12.dp))
-        .background(when { selected -> FocusGreen; focused -> Color(0x55FFFFFF); else -> Color(0x0DFFFFFF) })
-        .tvFocusable { focused = it }
-        .clickable(onClick = onClick)
-        .padding(horizontal = 10.dp, vertical = 5.dp)) {
-        Text(name, fontSize = 11.sp, fontWeight = if (selected || focused) FontWeight.Bold else FontWeight.Medium, color = if (selected) Color.Black else Color.White, maxLines = 1)
+    Box(Modifier.clip(RoundedCornerShape(8.dp))
+        .background(when { selected -> FocusGreen; focused -> androidx.compose.ui.graphics.Color(0xFF444444)
+            else -> androidx.compose.ui.graphics.Color(0xFF202020) })
+        .tvFocusable { focused = it }.clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 8.dp)) {
+        Text(name, fontSize = 12.sp, color = if (selected) androidx.compose.ui.graphics.Color.Black
+            else androidx.compose.ui.graphics.Color.White, maxLines = 1)
     }
 }
 
-@Composable private fun TVCard(name: String, imageUrl: String, isSquare: Boolean, rating: Double? = null, onClick: () -> Unit) {
+@Composable
+private fun TVCard(name: String, imageUrl: String, square: Boolean, rating: Double?,
+    modifier: Modifier = Modifier, artworkHeight: Dp = if (square) 80.dp else 138.dp, onClick: () -> Unit) {
+    val ratingLabel = remember(rating) { if (rating != null && rating > 0) String.format("%.1f", rating) else null }
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(modifier = Modifier
-            .then(if (isSquare) Modifier.size(80.dp) else Modifier.width(100.dp).aspectRatio(2f / 3f))
-            .clip(RoundedCornerShape(8.dp)).background(Color(0xFF1E1E1E))
-            .tvFocusable().clickable(onClick = onClick)
-        ) {
-            // Tamano de decodificacion ajustado al tamano real de la tarjeta:
-            // cuadrados (canales) piden imagenes ~2x mas chicas que antes,
-            // reduciendo el trabajo de Coil/CPU al pintar la grilla
-            if (isSquare) {
-                CachedImage(url = imageUrl, height = 999.dp, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize(), targetWidthPx = 160, targetHeightPx = 160)
-            } else {
-                CachedImage(url = imageUrl, height = 999.dp, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(), targetWidthPx = 200, targetHeightPx = 300)
+        Box(modifier.width(if (square) artworkHeight else artworkHeight * (2f / 3f)).height(artworkHeight)
+            .clip(RoundedCornerShape(8.dp)).background(androidx.compose.ui.graphics.Color(0xFF1E1E1E))
+            .semantics { contentDescription = name }.tvFocusable().clickable(onClick = onClick)) {
+            CachedImage(imageUrl, height = artworkHeight,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = if (square) ContentScale.Fit else ContentScale.Crop,
+                targetWidthPx = 160, targetHeightPx = if (square) 160 else 240)
+            if (ratingLabel != null) {
+                Text(ratingLabel, color = androidx.compose.ui.graphics.Color.Black,
+                    fontSize = 9.sp, modifier = Modifier.align(Alignment.TopEnd).padding(3.dp)
+                        .background(FocusGreen, RoundedCornerShape(3.dp)).padding(horizontal = 3.dp))
             }
-            rating?.let { if (it > 0) { Text(String.format("%.1f", it), fontSize = 8.sp, fontWeight = FontWeight.Black, color = Color.Black, modifier = Modifier.align(Alignment.TopEnd).padding(3.dp).background(FocusGreen, RoundedCornerShape(2.dp)).padding(horizontal = 4.dp, vertical = 1.dp)) } }
         }
         Spacer(Modifier.height(4.dp))
-        Text(name, fontSize = 9.sp, fontWeight = FontWeight.Medium, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center, modifier = Modifier.width(if (isSquare) 80.dp else 100.dp))
+        Text(name, color = androidx.compose.ui.graphics.Color.White, fontSize = 11.sp, maxLines = 2,
+            overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
+            modifier = Modifier.width(if (square) 80.dp else 100.dp))
     }
 }
 
-private fun filterVod(streams: List<VodStream>, cat: String, search: String): List<VodStream> { var r = streams.filter { !isAdult(it.name) }; if (cat.isNotEmpty()) r = r.filter { it.categoryId == cat }; if (search.isNotEmpty()) r = r.filter { it.name.contains(search, true) }; return r.sortedByDescending { it.getRating() ?: 0.0 }.take(100) }
-private fun filterSeries(series: List<SeriesItem>, cat: String, search: String): List<SeriesItem> { var r = series.filter { !isAdult(it.name) }; if (cat.isNotEmpty()) r = r.filter { it.categoryId == cat }; if (search.isNotEmpty()) r = r.filter { it.name.contains(search, true) }; return r.sortedByDescending { it.getRating() ?: 0.0 }.take(100) }
+/** IME resizing can detach a lazy item between scrollToItem and the next frame. */
+private suspend fun FocusRequester.requestWhenAttached() {
+    repeat(4) {
+        withFrameNanos { }
+        if (runCatching { requestFocus() }.isSuccess) return
+    }
+}

@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -31,10 +32,11 @@ fun CachedImage(
         Box(modifier = modifier.fillMaxWidth().height(height).background(Color(0xFF1A1A1A)))
         return
     }
-    AsyncImage(
-        model = ImageRequest.Builder(LocalContext.current)
+    val context = LocalContext.current
+    val request = remember(context, url, targetWidthPx, targetHeightPx) {
+        ImageRequest.Builder(context)
             .data(url)
-            .crossfade(150)
+            .crossfade(false)
             .memoryCachePolicy(CachePolicy.ENABLED)
             .diskCachePolicy(CachePolicy.ENABLED)
             .networkCachePolicy(CachePolicy.ENABLED)
@@ -44,7 +46,10 @@ fun CachedImage(
             .scale(Scale.FILL)
             .precision(Precision.INEXACT)
             .allowHardware(true)
-            .build(),
+            .build()
+    }
+    AsyncImage(
+        model = request,
         contentDescription = null,
         contentScale = contentScale,
         modifier = modifier.fillMaxWidth().height(height)

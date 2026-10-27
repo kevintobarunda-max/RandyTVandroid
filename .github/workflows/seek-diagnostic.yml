@@ -1,0 +1,38 @@
+name: Inspect seek playback state
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/download-artifact@v4
+        with:
+          name: HY300-seek-test-apks
+          path: seek-apks
+          run-id: 40151479532
+          github-token: ${{ github.token }}
+      - run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 31
+          target: default
+          arch: x86_64
+          ram-size: 2048M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            adb install seek-apks/debug/app-debug.apk
+            adb install seek-apks/androidTest/debug/app-debug-androidTest.apk
+            adb logcat -c
+            adb shell am instrument -w -e class com.randytv.mobile.player.SeekPlaybackTest com.randytv.mobile.test/androidx.test.runner.AndroidJUnitRunner
+            adb logcat -d -s System.out:I ExoPlayerImplInternal:E MediaCodecVideoRenderer:E

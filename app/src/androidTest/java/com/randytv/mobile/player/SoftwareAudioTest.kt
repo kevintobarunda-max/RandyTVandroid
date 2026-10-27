@@ -1,0 +1,81 @@
+package com.randytv.mobile.player
+
+import android.os.SystemClock
+import androidx.media3.common.MediaItem
+import androidx.media3.decoder.ffmpeg.FfmpegLibrary
+import androidx.media3.exoplayer.analytics.AnalyticsListener
+import androidx.test.core.app.ActivityScenario
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import org.junit.Assert.*
+import org.junit.Test
+import org.junit.runner.RunWith
+import java.io.File
+
+@androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
+@RunWith(AndroidJUnit4::class)
+class SoftwareAudioTest {
+    @Test fun softwareDecoderProducesPcmForMovieAndLiveAudioFormats() {
+        assertTrue("Bundled native decoder must load", FfmpegLibrary.isAvailable())
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val codecs = listOf("ac3", "eac3", "dca", "truehd", "mp3", "mp2", "flac", "opus", "vorbis", "alac", "ac3-surround", "truehd-surround")
+        ActivityScenario.launch(SeekTestActivity::class.java).use { scenario ->
+            for (codec in codecs) {
+                // ALAC is extracted from MP4/M4A; Media3 does not expose ALAC in Matroska.
+                val extension = if (codec == "alac") "m4a" else "mka"
+                val media = File(instrumentation.targetContext.cacheDir, "audio-$codec.$extension")
+                instrumentation.context.assets.open(media.name).use { input -> media.outputStream().use { input.copyTo(it) } }
+                var decoder = ""
+                val listener = object : AnalyticsListener {
+                    override fun onAudioDecoderInitialized(eventTime: AnalyticsListener.EventTime,
+                        decoderName: String, initializedTimestampMs: Long, initializationDurationMs: Long) {
+                        decoder = decoderName
+                    }
+                }
+                scenario.onActivity {
+                    it.controller.activePlayer.apply {
+                        stop()
+                        addAnalyticsListener(listener)
+                        setMediaItem(MediaItem.fromUri(media.toURI().toString()))
+                        prepare()
+                        play()
+                    }
+                }
+                var passed = false
+                val deadline = SystemClock.elapsedRealtime() + 15000
+                while (!passed && SystemClock.elapsedRealtime() < deadline) {
+                    scenario.onActivity {
+                        val player = it.controller.activePlayer
+                        assertNull("$codec: ${player.playerError}", player.playerError)
+                        passed = decoder.startsWith("ffmpeg") && player.currentPosition > 400 &&
+                            (player.audioDecoderCounters?.renderedOutputBufferCount ?: 0) > 4
+                    }
+                    if (!passed) SystemClock.sleep(50)
+                }
+                assertTrue("$codec must decode through FFmpeg and feed the PCM output; decoder=$decoder", passed)
+                if (codec.startsWith("truehd")) {
+                    var buffersBefore = 0
+                    scenario.onActivity {
+                        buffersBefore = it.controller.activePlayer.audioDecoderCounters!!.renderedOutputBufferCount
+                        it.controller.activePlayer.seekTo(2000)
+                    }
+                    passed = false
+                    val seekDeadline = SystemClock.elapsedRealtime() + 10000
+                    while (!passed && SystemClock.elapsedRealtime() < seekDeadline) {
+                        scenario.onActivity {
+                            val player = it.controller.activePlayer
+                            assertNull(player.playerError)
+                            passed = player.currentPosition > 2400 &&
+                                (player.audioDecoderCounters?.renderedOutputBufferCount ?: 0) > buffersBefore + 4
+                        }
+                        if (!passed) SystemClock.sleep(50)
+                    }
+                    assertTrue("$codec must continue decoding after seeking", passed)
+                }
+                println("SOFTWARE_AUDIO_OK codec=$codec decoder=$decoder")
+                scenario.onActivity { it.controller.activePlayer.removeAnalyticsListener(listener) }
+                media.delete()
+            }
+        }
+    }
+}
