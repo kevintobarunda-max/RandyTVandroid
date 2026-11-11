@@ -31,6 +31,62 @@ Aplicación **web nativa de Tizen TV** independiente del código Android de este
 
 **Importante:** los archivos fuente de este proyecto NO constituyen un paquete \`.wgt\` ya firmado. Se requiere una compilación y firma en Tizen Studio. No se ha probado aún en un Samsung físico.
 
+
+## Instalación con Terminal en Mac (credenciales precargadas)
+
+Descarga la rama Samsung Tizen:
+
+~~~bash
+cd ~/Downloads
+git clone -b feat/tizen-senior-friendly https://github.com/kevintobarunda-max/RandyTVandroid.git
+cd RandyTVandroid
+~~~
+
+Para **precargar las mismas credenciales que usa la aplicación Android** sin mostrarlas en Terminal ni añadirlas al repositorio:
+
+~~~bash
+python3 tizen/scripts/preparar-credenciales.py
+~~~
+
+Para ingresar datos nuevos (la contraseña no se muestra al escribirla):
+
+~~~bash
+python3 tizen/scripts/preparar-credenciales.py --nuevo
+~~~
+
+Este comando genera el archivo privado \`tizen/js/local-config.js\` excluido mediante \`.gitignore\`. Al abrir Randy TV, la app carga esos datos automáticamente y entra al catálogo, sin mostrar el formulario. **La contraseña NO está cifrada en el paquete firmado**: no compartas el archivo \`.wgt\`.
+
+Antes de instalar, debes: (a) instalar el **Tizen SDK con Samsung TV Extension** (por ejemplo, desde la extensión para Visual Studio Code), (b) activar Developer Mode y registrar la IP de tu Mac, (c) conectar el televisor en la misma red, y (d) crear un **certificado Samsung TV** válido en Certificate Manager con el identificador de ese TV.
+
+Con las herramientas CLI accesibles como \`tizen\` y \`sdb\` en tu \`PATH\`, ejecuta (sustituye ambos valores por los tuyos):
+
+~~~bash
+bash tizen/scripts/instalar-en-tv.sh 192.168.1.55 MiPerfilSamsung
+~~~
+
+El script compila, firma, conecta por SDB e instala el \`.wgt\`. También intentará detectar el SDK en rutas habituales de macOS. Si instalaste el SDK en otra ruta, añádela al PATH. Puedes examinar el televisor detectado con:
+
+~~~bash
+sdb connect 192.168.1.55
+sdb devices
+~~~
+
+Para hacerlo paso a paso, usa los comandos oficiales:
+
+~~~bash
+tizen build-web -- "$PWD/tizen"
+tizen package -t wgt -s MiPerfilSamsung -- "$PWD/tizen/.buildResult"
+sdb connect 192.168.1.55
+sdb devices
+# Sustituye SERIAL_TV por el primer campo que muestre sdb devices
+tizen install -s SERIAL_TV -n NOMBRE_DEL_ARCHIVO.wgt -- "$PWD/tizen/.buildResult"
+~~~
+
+Si \`sdb\` no conecta, comprueba que el modo desarrollador esté encendido, la IP del Mac autorizada y la red local permita comunicación con el televisor. Si la instalación falla por firma, verifica que el certificado Samsung TV corresponda al dispositivo.
+
+**Seguridad:** dado que el código Android de origen puede contener credenciales incrustadas, considera cambiarlas en tu proveedor antes de redistribuir un APK o compartir el código fuente. La nueva app Tizen no añade los secretos a GitHub.
+
+
 ## Uso con control remoto
 
 | Tecla | Función |
