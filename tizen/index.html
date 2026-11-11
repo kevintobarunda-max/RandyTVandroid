@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
+  <meta name="theme-color" content="#09131b"/>
+  <title>Randy TV · Samsung</title>
+  <link rel="stylesheet" href="css/app.css"/>
+  <script type="text/javascript" src="$WEBAPIS/webapis/webapis.js"></script>
+</head>
+<body>
+  <div id="app">
+    <section id="setup" class="view" aria-label="Configurar Randy TV">
+      <div class="setup-panel">
+        <div class="brand"><span class="brand-mark">R</span><div><strong>RANDY TV</strong><small>Edición Samsung · fácil de usar</small></div></div>
+        <h1>Bienvenido a Randy TV</h1>
+        <p class="lead">Configura tu servicio una sola vez. Después, usa las flechas y el botón OK del control.</p>
+        <form id="login-form" novalidate>
+          <label for="server">Dirección del servidor</label>
+          <input id="server" type="url" placeholder="http://servidor:8080" autocomplete="off" required/>
+          <label for="username">Usuario</label>
+          <input id="username" type="text" placeholder="Tu usuario" autocomplete="off" required/>
+          <label for="password">Contraseña</label>
+          <input id="password" type="password" placeholder="Tu contraseña" autocomplete="off" required/>
+          <label class="check-row"><input id="remember" type="checkbox" checked/> Recordar acceso en este televisor</label>
+          <p class="privacy-note">Al recordar el acceso, este televisor guardará los datos localmente. No lo actives en televisores compartidos.</p>
+          <button class="primary big-button focusable" id="connect" type="submit">Conectar y ver televisión <span aria-hidden="true">›</span></button>
+        </form>
+        <p id="login-error" class="error" role="alert"></p>
+      </div>
+    </section>
+
+    <section id="main" class="view hidden" aria-label="Randy TV">
+      <header class="app-header">
+        <button class="logo-button focusable" id="go-home" type="button" aria-label="Inicio"><span class="brand-mark small">R</span><strong>RANDY TV</strong></button>
+        <nav id="main-tabs" aria-label="Secciones">
+          <button class="tab focusable" data-nav="live" type="button">TV en vivo</button>
+          <button class="tab focusable" data-nav="vod" type="button">Películas</button>
+          <button class="tab focusable" data-nav="series" type="button">Series</button>
+          <button class="tab focusable" data-nav="favorites" type="button">Favoritos</button>
+        </nav>
+        <button id="settings-button" class="subtle focusable" type="button">⚙ Ajustes</button>
+      </header>
+      <main id="content" tabindex="-1"></main>
+      <footer class="helpbar"><span><b>◀ ▲ ▼ ▶</b> Moverse</span><span><b>OK</b> Seleccionar</span><span><b>↩</b> Volver</span><span><b>CH + / −</b> Cambiar canal</span></footer>
+    </section>
+
+    <section id="player" class="view hidden" aria-label="Reproducción">
+      <object id="av-player" type="application/avplayer"></object>
+      <video id="html-player" playsinline></video>
+      <div id="player-loading" class="player-loading"><span class="paw">🐾</span><strong>Conectando con el canal…</strong></div>
+      <div id="player-top" class="player-top">
+        <div class="channel-info"><strong id="player-title">Televisión</strong><small id="player-status">Randy TV</small></div>
+        <div class="live-pill" id="live-pill">● EN VIVO</div>
+      </div>
+      <div id="player-bottom" class="player-bottom">
+        <div id="playback-progress" class="progress-track"><div id="progress-fill"></div></div>
+        <div id="time-info" class="time-info"></div>
+        <div class="player-actions">
+          <button id="player-back" class="focusable" type="button">← Volver</button>
+          <button id="player-prev" class="focusable" type="button">◀ Canal anterior</button>
+          <button id="player-pause" class="focusable" type="button">❚❚ Pausa</button>
+          <button id="player-next" class="focusable" type="button">Canal siguiente ▶</button>
+          <button id="player-fav" class="focusable" type="button">☆ Favorito</button>
+        </div>
+        <div id="player-help" class="player-help">▲ ▼ Cambiar canal · Números: ir al canal · ↩ Volver</div>
+      </div>
+      <div id="number-bubble" class="number-bubble hidden"></div>
+    </section>
+    <div id="toast" role="status" class="toast hidden"></div>
+  </div>
+  <script src="js/app.js"></script>
+</body>
+</html>
