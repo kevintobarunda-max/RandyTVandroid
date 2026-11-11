@@ -48,6 +48,20 @@ if [[ ! -s "$PROJECT/js/local-config.js" ]]; then
   python3 "$PROJECT/scripts/preparar-credenciales.py"
 fi
 
+# Web CLI legacy can fail with "javax/xml/bind/JAXBException" on Java 11+.
+# Prefer a locally installed Java 8 for this process only.
+JAVA8_HOME="$(/usr/libexec/java_home -v 1.8 2>/dev/null || true)"
+if [[ -z "$JAVA8_HOME" || ! -x "$JAVA8_HOME/bin/java" ]]; then
+  echo "Error: no se encontró Java 8, necesario para esta versión del Web CLI de Tizen."
+  echo "En Mac M1 instala Azul Zulu 8: brew install --cask zulu@8"
+  echo "Luego vuelve a ejecutar este mismo script."
+  exit 1
+fi
+export JAVA_HOME="$JAVA8_HOME"
+export PATH="$JAVA_HOME/bin:$PATH"
+echo "Java seleccionado para compilar:"
+"$JAVA_HOME/bin/java" -version 2>&1 | head -n 3
+
 echo "1/4 Compilando aplicación web Tizen..."
 tizen build-web -- "$PROJECT"
 
