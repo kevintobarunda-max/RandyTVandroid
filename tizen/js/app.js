@@ -102,7 +102,7 @@
     $("player-back").onclick=leavePlayer;$("player-prev").onclick=function(){zap(-1);};$("player-next").onclick=function(){zap(1);};$("player-pause").onclick=togglePause;$("player-fav").onclick=function(){if(state.playing)toggleFav(state.playing.type,state.playing.item);};
     document.addEventListener("visibilitychange",function(){if(document.hidden&&state.playing){rememberPosition();try{if(playerMode==="av")webapis.avplay.pause();else $("html-player").pause();}catch(e){}}});
     window.addEventListener("beforeunload",function(){stopPlayback();});
-    registerKeys();var saved=store.read("randy_tizen_login",null);if(saved&&saved.server&&saved.username&&saved.password){state.credentials=saved;$("server").value=saved.server;$("username").value=saved.username;$("password").value=saved.password;launch();}else{showView("setup");$("server").focus();}
+    registerKeys();var local=window.RANDY_LOCAL_CONFIG;var saved=(local&&local.server&&local.username&&local.password)?local:store.read("randy_tizen_login",null);if(saved&&saved.server&&saved.username&&saved.password){state.credentials=saved;$("server").value=saved.server;$("username").value=saved.username;$("password").value=saved.password;launch();}else{showView("setup");$("server").focus();}
   }
   if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",attach);else attach();
 })();
