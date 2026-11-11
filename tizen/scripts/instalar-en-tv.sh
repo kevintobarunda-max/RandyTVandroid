@@ -3,11 +3,11 @@
 # Uso: bash tizen/scripts/instalar-en-tv.sh IP_TV PERFIL_CERTIFICADO
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 PROJECT="$ROOT/tizen"
-TV_IP="\${1:-}"
-PROFILE="\${2:-}"
+TV_IP="${1:-}"
+PROFILE="${2:-}"
 
 if [[ ! "$TV_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   echo "Uso: bash tizen/scripts/instalar-en-tv.sh IP_DEL_TV PERFIL_CERTIFICADO"
@@ -64,7 +64,7 @@ echo "3/4 Conectando a Samsung en $TV_IP"
 sdb connect "$TV_IP"
 echo "Dispositivos conectados:"
 sdb devices
-SERIAL="\${TV_IP}:26101"
+SERIAL="${TV_IP}:26101"
 
 echo "4/4 Instalando $(basename "$WGT") en $SERIAL"
 tizen install -s "$SERIAL" -n "$(basename "$WGT")" -- "$(dirname "$WGT")"
