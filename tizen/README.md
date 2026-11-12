@@ -166,6 +166,21 @@ Esta prueba genera una aplicación inocua llamada **RandyPrueba** (sin datos del
 
 Según las preguntas frecuentes oficiales de Samsung, los registros internos del TV **no se pueden recuperar mediante `sdb dlog`**. El diagnóstico es por comparación de instalación, no por lectura de logs internos.
 
+## Samsung UN55TU8200GXZS: prueba mínima instalada correctamente
+
+En este televisor, la prueba **RandyPrueba** se instaló con éxito usando el perfil **RANDYTVPRO** y conexión **192.168.0.14:26101**. Por tanto, en este equipo ya se verificaron la red, la firma y la instalación de una app TV mínima.
+
+La versión inicial de Randy TV fue rechazada con un mensaje genérico. La revisión posterior ajustó el `config.xml` para que tenga las mismas declaraciones esenciales que la prueba exitosa: `feature/screen.size.all`, `icon src="icon.png"` y nombre `RandyTV` sin espacios. El script crea el ícono en el directorio temporal de compilación y valida manifiesto e imagen antes de firmar. Este cambio está **pendiente de prueba en el TV físico**.
+
+Reintentar desde la raíz local del proyecto (el `local-config.js` generado y las credenciales privadas no se borran con `git pull`):
+
+~~~bash
+git pull --ff-only
+bash tizen/scripts/instalar-en-tv.sh 192.168.0.14 RANDYTVPRO
+~~~
+
+Si vuelve a fallar, **no regenerar certificados ni credenciales**. El siguiente diagnóstico es aislar el manifiesto con el mismo contenido de la app, o revisar el mensaje de error detallado del instalador para esa versión de Tizen.
+
 ## Uso con control remoto
 
 | Tecla | Función |
