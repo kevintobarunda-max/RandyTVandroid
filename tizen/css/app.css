@@ -238,6 +238,62 @@ input{transition:border-color .14s ease}
 .track-option:focus small{color:#315549}
 .track-empty{font-size:19px;color:#b1c4cf;line-height:1.45;background:#1a2d38;padding:21px;border-radius:12px}
 .track-help{flex:none;margin-top:9px!important;font-size:14px!important;color:#8ca8b3!important}
+/* Guía de TV en vivo: riel vertical y programación horizontal sobre video.
+   Estética inspirada en la navegación televisiva, sin recursos de Zapping. */
+.live-guide{position:absolute;z-index:12;inset:0;background:linear-gradient(90deg,rgba(4,9,18,.94) 0%,rgba(5,11,21,.90) 52%,rgba(5,11,20,.82) 100%);padding:40px 58px 28px;display:flex;flex-direction:column;overflow:hidden}
+.guide-header{display:flex;justify-content:space-between;align-items:center;flex:0 0 91px;border-bottom:1px solid rgba(184,202,207,.15)}
+.guide-overline{font-size:13px;color:#c0cbd4;letter-spacing:.16em;font-weight:bold}
+.guide-overline span{margin:0 9px;color:#88eec0}
+.guide-header h2{font-size:39px;letter-spacing:-.045em;margin:8px 0 10px;color:#fff}
+.guide-live-indicator{display:flex;align-items:center;color:#e3eeee;font-size:15px;font-weight:bold;letter-spacing:.1em;padding:12px 17px;background:rgba(35,54,65,.7);border:1px solid #45616b;border-radius:99px}
+.guide-live-dot{width:10px;height:10px;border-radius:50%;background:#ff5c70;margin-right:9px}
+.guide-body{display:flex;flex:1;min-height:0;padding-top:23px}
+.guide-channels{flex:0 0 332px;width:332px;display:flex;flex-direction:column;min-height:0;padding-right:24px;border-right:1px solid rgba(195,219,222,.14)}
+.guide-shows{flex:1;min-width:0;padding-left:32px;display:flex;flex-direction:column}
+.guide-subhead{display:flex;align-items:center;justify-content:space-between;flex:0 0 36px;font-size:15px;font-weight:bold;color:#9cb5c3;letter-spacing:.13em}
+.guide-subhead span{color:#d9e8ec;font-size:14px;letter-spacing:0}
+.guide-rail{flex:1;min-height:0;overflow:hidden;padding:3px 4px 10px}
+.guide-row{display:flex;align-items:center;width:100%;min-height:85px;padding:10px 12px;margin:0 0 8px;background:rgba(24,41,55,.72);border:2px solid transparent;border-radius:13px;color:#e8f2f3;text-align:left;overflow:hidden}
+.guide-row.selected{background:#e8f5f1;border-color:#f5fffc;color:#09241b;transform:scale(1.015)}
+.guide-row:focus{outline:3px solid #aef8c9;outline-offset:1px}
+.guide-row .guide-ch-number{width:38px;flex:none;font-size:20px;font-weight:bold;color:#a9bac2}
+.guide-row.selected .guide-ch-number{color:#25724c}
+.guide-channel-icon{display:flex;align-items:center;justify-content:center;flex:none;width:67px;height:59px;border-radius:10px;background:#f0f5f6;color:#203c44;margin-right:12px;font-size:30px}
+.guide-channel-icon img{width:60px;height:52px;object-fit:contain}
+.guide-row strong{display:block;font-size:19px;line-height:1.2;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}
+.guide-row small{display:block;font-size:13px;line-height:1.4;color:#9cb4be;margin-top:3px}
+.guide-row.selected small{color:#497369}
+.guide-programs{flex:1;min-height:0;padding:27px 0 0;display:flex;align-items:flex-start;gap:14px}
+.guide-program{position:relative;min-height:265px;width:calc(50% - 7px);padding:23px;background:rgba(24,37,50,.94);border:2px solid #354a5b;border-radius:19px;overflow:hidden}
+.guide-program.selected{background:rgba(31,60,62,.93);border-color:#bcf8d6}
+.guide-program .guide-program-status{display:inline-block;padding:9px 12px;background:#cf3858;color:#fff;border-radius:99px;font-size:13px;font-weight:bold;letter-spacing:.06em}
+.guide-program.next .guide-program-status{background:#304957;color:#cedee5}
+.guide-program h3{font-size:27px;line-height:1.25;margin:26px 0 14px;letter-spacing:-.03em;overflow-wrap:break-word;max-height:100px;overflow:hidden}
+.guide-program .guide-time{font-size:19px;color:#b5cbd2;margin-bottom:18px}
+.guide-program .guide-description{font-size:17px;line-height:1.4;color:#8faeb9;max-height:75px;overflow:hidden}
+.guide-progress{position:absolute;bottom:0;left:0;right:0;height:5px;background:#415461}
+.guide-progress-fill{height:100%;background:#ff5776;width:0}
+.guide-no-epg{width:100%;padding:32px 26px;font-size:23px;line-height:1.5;color:#c4d6dc;background:rgba(22,41,51,.8);border:1px solid #314d5a;border-radius:15px}
+.guide-hint{flex:0 0 75px;font-size:18px;color:#a8c1c9;padding:15px 0}
+.guide-hint span{color:#74a08d;margin:0 9px}
+.guide-toolbar{display:flex;align-items:center;justify-content:flex-end;flex:0 0 84px;border-top:1px solid rgba(195,215,217,.14);gap:14px}
+.guide-toolbar button{background:#203745;border:1px solid #49616c;color:#e7f2f5;min-height:53px;padding:10px 19px;border-radius:11px;font-size:18px;font-weight:bold}
+.guide-toolbar button:focus{background:#b6f3ce;border-color:#d9ffe8;color:#102b22}
+.guide-toolbar .guide-primary{background:#c3f8d4;color:#09261a;border-color:#c3f8d4}
+.live-grid{grid-template-columns:repeat(7,minmax(0,1fr))}
+.live-grid .media-card.live-tile{display:block;text-align:center;padding:0;min-height:193px;background:#131e29;border:1px solid #293d49;border-radius:17px}
+.live-grid .media-card.live-tile:focus{border-color:#bbffe0;background:#1b3540}
+.live-grid .media-card.live-tile .logo-pad{height:125px;width:100%;padding:11px 15px;background:#e9f0f2;border-radius:15px 15px 0 0;display:flex;align-items:center;justify-content:center}
+.live-grid .media-card.live-tile .logo-pad img{margin:0;padding:2px;object-fit:contain;width:100%;height:100%;border-radius:0;background:transparent}
+.live-grid .media-card.live-tile .logo-pad .card-placeholder{margin:0;background:transparent;height:auto;width:100%;color:#264b55;font-size:44px}
+.live-grid .media-card.live-tile .text-content{display:block;text-align:left;padding:11px 12px 13px;min-height:68px}
+.live-grid .media-card.live-tile .live-number{display:inline-block;background:#293a48;color:#d6f5e1;border-radius:5px;padding:2px 7px;margin-right:5px;font-size:13px;font-weight:bold}
+.live-grid .media-card.live-tile strong{display:inline;vertical-align:middle;font-size:16px;line-height:1.2;max-height:41px}
+.live-grid .media-card.live-tile small{display:block;font-size:12px;margin-top:6px;color:#87a3ad}
+@media(max-width:1500px){.live-grid{grid-template-columns:repeat(6,minmax(0,1fr))}.guide-channels{flex-basis:280px;width:280px}.guide-row{min-height:75px}.guide-program h3{font-size:24px}.live-guide{padding:30px}}
+@media(max-width:1024px){.live-grid{grid-template-columns:repeat(5,minmax(0,1fr))}.guide-channels{flex-basis:220px;width:220px;padding-right:12px}.guide-shows{padding-left:15px}.guide-row .guide-ch-number{width:27px}.guide-channel-icon{width:51px;height:46px;margin-right:7px}.guide-channel-icon img{width:46px;height:40px}.guide-row strong{font-size:15px}.guide-program h3{font-size:20px}}
+@media(max-width:720px){.live-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.live-guide{padding:15px}.guide-header{flex-basis:60px}.guide-header h2{font-size:26px}.guide-live-indicator{display:none}.guide-channels{flex-basis:118px;width:118px}.guide-channel-icon{display:none}.guide-row{min-height:66px;padding:6px}.guide-row strong{font-size:13px}.guide-shows{padding-left:9px}.guide-programs{display:block}.guide-program{width:100%;min-height:150px;margin-bottom:10px;padding:12px}.guide-program h3{font-size:18px;margin:11px 0}.guide-program.next{display:none}.guide-toolbar{flex-basis:75px;gap:5px}.guide-toolbar button{font-size:12px;padding:6px}.guide-hint{font-size:13px}.live-grid .media-card.live-tile .logo-pad{height:85px}}
+
 @media(max-width:1500px){.zap-card{width:540px;left:28px;bottom:230px}.zap-main strong{font-size:24px}.track-panel{width:470px;right:20px}.player-actions button{padding:13px 18px;margin:0 5px;font-size:18px}}
 @media(max-width:1024px){.zap-card{width:480px;bottom:190px}.zap-logo{width:70px;height:70px;font-size:30px}.zap-main strong{font-size:22px}.track-panel{width:420px}.player-actions{flex-wrap:wrap}.player-actions button{margin-bottom:12px}}
 @media(max-width:720px){.zap-card{width:calc(100% - 32px);left:16px;bottom:155px;padding:16px}.zap-main strong{font-size:19px}.zap-logo{width:55px;height:55px;margin-right:12px}.zap-logo img{width:48px;height:48px}.zap-remote{display:none}.track-panel{width:calc(100% - 24px);right:12px;padding:18px}.track-panel h2{font-size:25px}.track-option{font-size:18px}}
