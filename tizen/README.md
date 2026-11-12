@@ -149,6 +149,23 @@ tizen security-profiles list
 No publiques el XML ni los archivos `.p12`, no compartas sus contraseñas, y no subas el `.wgt` porque contiene la contraseña del servicio precargada.
 
 
+
+### Si el paquete está firmado pero Tizen rechaza la instalación
+
+Ejecuta esta prueba mínima desde la raíz del proyecto:
+
+~~~bash
+git pull --ff-only
+bash tizen/scripts/diagnosticar-instalacion.sh 192.168.0.14 RANDYTVPRO
+~~~
+
+Esta prueba genera una aplicación inocua llamada **RandyPrueba** (sin datos del servicio), la firma con el perfil seleccionado y pide instalarla en el TV.
+
+- Si **RandyPrueba falla**, el problema está fuera de Randy TV: revisa que tu perfil de Samsung TV realmente tenga un certificado **distribuidor Samsung TV** autorizado para el DUID del TV y que Developer Mode esté activo; las dos firmas dentro del archivo no demuestran que el televisor acepte la cadena del certificado.
+- Si **RandyPrueba se instala**, el certificado básico funciona y conviene revisar el `config.xml`, el contenido y la identidad del paquete principal Randy TV.
+
+Según las preguntas frecuentes oficiales de Samsung, los registros internos del TV **no se pueden recuperar mediante `sdb dlog`**. El diagnóstico es por comparación de instalación, no por lectura de logs internos.
+
 ## Uso con control remoto
 
 | Tecla | Función |
