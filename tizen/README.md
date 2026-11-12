@@ -32,6 +32,8 @@ Aplicación **web nativa de Tizen TV** independiente del código Android de este
 **Importante:** los archivos fuente de este proyecto NO constituyen un paquete \`.wgt\` ya firmado. Se requiere una compilación y firma en Tizen Studio. No se ha probado aún en un Samsung físico.
 
 
+**Nota para Mac con compilador Tizen antiguo:** el instalador prepara directamente los recursos web (HTML, CSS y JavaScript) en `.buildResult` y luego utiliza el empaquetador y firmador oficial. Esto evita el fallo `javax/xml/bind/JAXBException` del paso `tizen build-web` sin requerir cambios en Java ni omitir la firma del `.wgt`.
+
 ## Instalación con Terminal en Mac (credenciales precargadas)
 
 Descarga la rama Samsung Tizen:
