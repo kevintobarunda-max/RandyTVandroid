@@ -298,6 +298,7 @@
     if(!state.credentials)return;
     clearTimeout(zapSwitchTimer);
     stopPlayback();
+    closeGuide(true);
     var serial=++playSerial;
     state.playing={type:type,item:item};
     state.activeKey=itemKey(type,item);
@@ -329,8 +330,13 @@
     $("player-loading").className="player-loading hidden";
     if(type==="live"){
       updateZapStatus("Señal lista");
+      loadEpg(item,function(list){
+        if(!currentPlay(serial)||!state.playing||String(state.playing.item.stream_id)!==String(item.stream_id))return;
+        var current=guideCurrentNext(list).current;
+        if(current)updateZapStatus("Ahora: "+epgText(current.title).slice(0,66));
+      });
       clearTimeout(zapHideTimer);
-      zapHideTimer=setTimeout(hideZapCard,1750);
+      zapHideTimer=setTimeout(hideZapCard,2600);
     }
     restorePosition(type,item);
   }
@@ -414,6 +420,7 @@
     clearInterval(progressTimer);progressTimer=null;
     $("track-panel").className="track-panel hidden";
     trackMode="";
+    closeGuide(true);
     hideZapCard();
   }
   function stopPlayerIfOpen(){if(state.playing)stopPlayback();}
@@ -446,6 +453,7 @@
   }
   function zap(step){
     if(!state.playing||state.playing.type!=="live"||!state.playlist.length)return;
+    if(guideOpen)closeGuide(true);
     var n=state.playlist.length;
     state.playlistIndex=(state.playlistIndex+step+n)%n;
     var next=state.playlist[state.playlistIndex];
@@ -720,6 +728,7 @@
   function openTrackPanel(mode){
     if(!state.playing)return;
     clearTimeout(overlayTimer);
+    if(guideOpen)closeGuide(true);
     trackMode=mode;
     $("track-title").textContent=mode==="audio"?"Pistas de audio":"Subtítulos";
     $("track-description").textContent=mode==="audio"?"Selecciona el idioma de audio que tenga esta señal.":"Activa, desactiva o cambia los subtítulos disponibles.";
@@ -772,12 +781,77 @@
   function clearSettings(){stopPlayback();state.credentials=null;state.live=[];state.vod=[];state.series=[];state.favorites=store.read("randy_tizen_favorites",[]);store.remove("randy_tizen_login");$("password").value="";showView("setup");setLoginError("");$("server").focus();}
   function settings(){if(confirm("¿Quieres cambiar los datos de acceso?"))clearSettings();}
   function moveFocus(key){var nodes=document.querySelectorAll(".view:not(.hidden) .focusable");var valid=[];for(var i=0;i<nodes.length;i++){var n=nodes[i],r=n.getBoundingClientRect();if(r.width>0&&r.height>0&&getComputedStyle(n).visibility!=="hidden")valid.push(n);}if(!valid.length)return;var current=document.activeElement,index=valid.indexOf(current);if(index<0){valid[0].focus();return;}var r0=current.getBoundingClientRect(),x0=(r0.left+r0.right)/2,y0=(r0.top+r0.bottom)/2,nearest=null,best=Infinity;for(var j=0;j<valid.length;j++){var e=valid[j];if(e===current)continue;var r=e.getBoundingClientRect(),x=(r.left+r.right)/2,y=(r.top+r.bottom)/2,dx=x-x0,dy=y-y0;if(key==="left"&&dx>=-5||key==="right"&&dx<=5||key==="up"&&dy>=-5||key==="down"&&dy<=5)continue;var primary=key==="left"||key==="right"?Math.abs(dx):Math.abs(dy),secondary=key==="left"||key==="right"?Math.abs(dy):Math.abs(dx),score=primary+secondary*2.3;if(score<best){best=score;nearest=e;}}if(nearest){nearest.focus();if(nearest.scrollIntoView)nearest.scrollIntoView({block:"nearest",inline:"nearest"});}}
-  function pressBack(){if($("track-panel").className.indexOf("hidden")===-1){closeTrackPanel();return;}if(state.playing){leavePlayer();return;}if(state.detail){closeDetail();return;}if(state.section!=="home"){selectSection("home");return;}notify("Ya estás en Inicio. Usa las flechas para elegir.");}
+  function pressBack(){if($("track-panel").className.indexOf("hidden")===-1){closeTrackPanel();return;}if(guideOpen){closeGuide();return;}if(state.playing){leavePlayer();return;}if(state.detail){closeDetail();return;}if(state.section!=="home"){selectSection("home");return;}notify("Ya estás en Inicio. Usa las flechas para elegir.");}
   function numberKey(num){if(!state.playing||state.playing.type!=="live")return;state.remoteDigits=(state.remoteDigits+num).slice(-4);$("number-bubble").textContent=state.remoteDigits;$("number-bubble").className="number-bubble";clearTimeout(digitTimer);digitTimer=setTimeout(function(){var n=parseInt(state.remoteDigits,10);state.remoteDigits="";$("number-bubble").className="number-bubble hidden";if(!n)return;var match=null;for(var j=0;j<state.playlist.length;j++){if(Number(state.playlist[j].num)===n){match=j;break;}}if(match===null&&n<=state.playlist.length)match=n-1;if(match!==null){state.playlistIndex=match;showZapCard(state.playlist[match],"Cambiando de canal…");play("live",state.playlist[match]);}else notify("No existe el canal "+n+" en esta lista.");},900);}
-  function keyDown(event){var k=event.keyCode||event.which,playing=!!state.playing,typing=document.activeElement&&(/INPUT|TEXTAREA/.test(document.activeElement.tagName));var defs={37:"left",38:"up",39:"right",40:"down"};if(k===10009||k===8||k===27){if(typing){document.activeElement.blur();return;}event.preventDefault();pressBack();return;}
-    if(playing){if($("track-panel").className.indexOf("hidden")===-1){if(k===38||k===40){event.preventDefault();moveTrackFocus(k===40?1:-1);return;}if(k===13){event.preventDefault();var chosen=document.activeElement;if(chosen&&chosen.tagName==="BUTTON")chosen.click();return;}if(k===37||k===39){event.preventDefault();moveTrackFocus(k===39?1:-1);return;}return;}if(k===405){event.preventDefault();openTrackPanel("subtitles");return;}if(k===404){event.preventDefault();openTrackPanel("audio");return;}if(k>=48&&k<=57){event.preventDefault();numberKey(String(k-48));return;}if(k===427||k===33||k===38){event.preventDefault();zap(1);return;}if(k===428||k===34||k===40){event.preventDefault();zap(-1);return;}if(k===415||k===19||k===10252){event.preventDefault();togglePause();return;}if(k===413){event.preventDefault();leavePlayer();return;}if(k===37||k===39){event.preventDefault();if(state.playing.type!=="live")seekTo(Math.max(0,getCurrentTime()+(k===39?15:-15)));showOverlay();return;}if(k===13){event.preventDefault();if($("player-bottom").style.display==="none"){showOverlay();$("player-pause").focus();}else if(document.activeElement&&document.activeElement.tagName==="BUTTON")document.activeElement.click();else showOverlay();return;}showOverlay();return;}
-    if(typing){if(k===13&&document.activeElement.type==="checkbox"){event.preventDefault();document.activeElement.click();return;}if(k===38||k===40){event.preventDefault();moveFocus(k===38?"up":"down");return;}if(k===13){event.preventDefault();document.activeElement.blur();}return;}
-    if(defs[k]){event.preventDefault();moveFocus(defs[k]);return;}if(k===13){var a=document.activeElement;if(a&&a.tagName==="BUTTON"){event.preventDefault();a.click();}return;}if(k===427||k===428){event.preventDefault();selectSection("live");return;}
+  function keyDown(event){
+    var k=event.keyCode||event.which,playing=!!state.playing;
+    var typing=document.activeElement&&(/INPUT|TEXTAREA/.test(document.activeElement.tagName));
+    var defs={37:"left",38:"up",39:"right",40:"down"};
+    if(k===10009||k===8||k===27){
+      if(typing){document.activeElement.blur();return;}
+      event.preventDefault();pressBack();return;
+    }
+    if(playing){
+      if($("track-panel").className.indexOf("hidden")===-1){
+        if(k===38||k===40){event.preventDefault();moveTrackFocus(k===40?1:-1);return;}
+        if(k===37||k===39){event.preventDefault();moveTrackFocus(k===39?1:-1);return;}
+        if(k===13){event.preventDefault();var chosen=document.activeElement;if(chosen&&chosen.tagName==="BUTTON")chosen.click();return;}
+        return;
+      }
+      if(k===404){event.preventDefault();openTrackPanel("audio");return;}
+      if(k===405){event.preventDefault();openTrackPanel("subtitles");return;}
+      if(guideOpen){
+        if(k>=48&&k<=57){event.preventDefault();closeGuide(true);numberKey(String(k-48));return;}
+        if(k===427||k===33){event.preventDefault();closeGuide(true);zap(1);return;}
+        if(k===428||k===34){event.preventDefault();closeGuide(true);zap(-1);return;}
+        if(k===38||k===40){event.preventDefault();guideMove(k===40?1:-1);return;}
+        if(k===37||k===39){event.preventDefault();guideSwitchColumn(k===39?1:-1);return;}
+        if(k===13){
+          event.preventDefault();
+          var focused=document.activeElement;
+          if(focused&&focused.tagName==="BUTTON"&&focused.parentNode&&focused.parentNode.className==="guide-toolbar")focused.click();
+          else tuneGuideChannel();
+          return;
+        }
+        if(k===403){event.preventDefault();closeGuide();return;}
+        return;
+      }
+      if(k===403&&state.playing.type==="live"){event.preventDefault();showGuide();return;}
+      if(k===406&&state.playing.type==="live"){event.preventDefault();toggleFav("live",state.playing.item);return;}
+      if(k>=48&&k<=57){event.preventDefault();numberKey(String(k-48));return;}
+      if(k===427||k===33||k===38){event.preventDefault();zap(1);return;}
+      if(k===428||k===34||k===40){event.preventDefault();zap(-1);return;}
+      if(k===415||k===19||k===10252){event.preventDefault();togglePause();return;}
+      if(k===413){event.preventDefault();leavePlayer();return;}
+      if(k===37||k===39){
+        event.preventDefault();
+        if(state.playing.type==="live")showGuide();
+        else{seekTo(Math.max(0,getCurrentTime()+(k===39?15:-15)));showOverlay();}
+        return;
+      }
+      if(k===13){
+        event.preventDefault();
+        if(state.playing.type==="live")showGuide();
+        else if($("player-bottom").style.display==="none"){$("player-pause").focus();showOverlay();}
+        else if(document.activeElement&&document.activeElement.tagName==="BUTTON")document.activeElement.click();
+        else showOverlay();
+        return;
+      }
+      showOverlay();return;
+    }
+    if(typing){
+      if(k===13&&document.activeElement.type==="checkbox"){event.preventDefault();document.activeElement.click();return;}
+      if(k===38||k===40){event.preventDefault();moveFocus(k===38?"up":"down");return;}
+      if(k===13){event.preventDefault();document.activeElement.blur();}
+      return;
+    }
+    if(defs[k]){event.preventDefault();moveFocus(defs[k]);return;}
+    if(k===13){
+      var a=document.activeElement;
+      if(a&&a.tagName==="BUTTON"){event.preventDefault();a.click();}
+      return;
+    }
+    if(k===427||k===428){event.preventDefault();selectSection("live");}
   }
   function registerKeys(){try{if(window.tizen&&tizen.tvinputdevice){tizen.tvinputdevice.registerKeyBatch(["ChannelUp","ChannelDown","MediaPlayPause","MediaPlay","MediaPause","MediaStop","ColorF0Red","ColorF1Green","ColorF2Yellow","ColorF3Blue"]);}}catch(e){console.warn("Remote key registration:",e);}}
   function updateClock(){
@@ -786,7 +860,7 @@
   }
   function attach(){document.addEventListener("keydown",keyDown);$("login-form").addEventListener("submit",startLogin);$("go-home").onclick=function(){selectSection("home");};$("settings-button").onclick=settings;
     var tabs=document.querySelectorAll("[data-nav]");for(var i=0;i<tabs.length;i++)tabs[i].onclick=function(){selectSection(this.getAttribute("data-nav"));};
-    $("player-back").onclick=leavePlayer;$("player-prev").onclick=function(){zap(-1);};$("player-next").onclick=function(){zap(1);};$("player-pause").onclick=togglePause;$("player-fav").onclick=function(){if(state.playing)toggleFav(state.playing.type,state.playing.item);};$("player-audio").onclick=function(){openTrackPanel("audio");};$("player-subtitles").onclick=function(){openTrackPanel("subtitles");};$("track-close").onclick=closeTrackPanel;
+    $("player-back").onclick=leavePlayer;$("player-prev").onclick=function(){zap(-1);};$("player-next").onclick=function(){zap(1);};$("player-pause").onclick=togglePause;$("player-fav").onclick=function(){if(state.playing)toggleFav(state.playing.type,state.playing.item);};$("player-audio").onclick=function(){openTrackPanel("audio");};$("player-subtitles").onclick=function(){openTrackPanel("subtitles");};$("track-close").onclick=closeTrackPanel;$("player-guide").onclick=showGuide;$("guide-close").onclick=function(){closeGuide();};$("guide-audio").onclick=function(){openTrackPanel("audio");};$("guide-subtitles").onclick=function(){openTrackPanel("subtitles");};$("guide-favorites").onclick=function(){if(state.playlist[guideIndex]){toggleFav("live",state.playlist[guideIndex]);renderGuide();}};
     document.addEventListener("visibilitychange",function(){if(document.hidden&&state.playing){rememberPosition();try{if(playerMode==="av")webapis.avplay.pause();else $("html-player").pause();}catch(e){}}});
     window.addEventListener("beforeunload",function(){stopPlayback();});
     registerKeys();updateClock();setInterval(updateClock,60000);var local=window.RANDY_LOCAL_CONFIG;var saved=(local&&local.server&&local.username&&local.password)?local:store.read("randy_tizen_login",null);if(saved&&saved.server&&saved.username&&saved.password){state.credentials=saved;$("server").value=saved.server;$("username").value=saved.username;$("password").value=saved.password;launch();}else{showView("setup");$("server").focus();}
