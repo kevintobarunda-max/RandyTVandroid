@@ -62,7 +62,63 @@ mkdir -p "$BUILD/js" "$BUILD/css"
 cp "$PROJECT/config.xml" "$PROJECT/index.html" "$BUILD/"
 cp "$PROJECT/css/app.css" "$BUILD/css/"
 cp "$PROJECT/js/app.js" "$PROJECT/js/local-config.js" "$BUILD/js/"
-if [[ ! -s "$BUILD/config.xml" || ! -s "$BUILD/js/local-config.js" ]]; then
+
+# El instalador de prueba Samsung que sí funcionó incluía icon.png.
+# Creamos un PNG ligero localmente sin añadir dependencias de imagen.
+python3 - "$BUILD/icon.png" <<'PY'
+import struct, sys, zlib
+width = height = 256
+pixels = []
+for y in range(height):
+    row = bytearray()
+    for x in range(width):
+        # Icono sencillo color menta, con letra R en estilo de bloques.
+        base = (14, 34, 44)
+        edge = (116, 231, 188) if x < 10 or x >= 246 or y < 10 or y >= 246 else base
+        vert = 61 <= x < 87 and 54 <= y < 205
+        top = 61 <= x < 165 and 54 <= y < 79
+        mid = 61 <= x < 165 and 119 <= y < 145
+        round_side = 145 <= x < 172 and 71 <= y < 129
+        leg = 116 <= x < 148 and 142 <= y < 184
+        lower_leg = 140 <= x < 174 and 177 <= y < 205
+        color = (116, 231, 188) if vert or top or mid or round_side or leg or lower_leg else edge
+        row.extend(color)
+    pixels.append(b'\0' + bytes(row))
+def chunk(tag, data):
+    return struct.pack('>I', len(data)) + tag + data + struct.pack('>I', zlib.crc32(tag + data) & 0xffffffff)
+png = b'\x89PNG\r\n\x1a\n'
+png += chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 2, 0, 0, 0))
+png += chunk(b'IDAT', zlib.compress(b''.join(pixels), 9))
+png += chunk(b'IEND', b'')
+with open(sys.argv[1], 'wb') as f:
+    f.write(png)
+PY
+
+# Comprobar el manifiesto antes de firmar o transferir el paquete.
+python3 - "$BUILD/config.xml" "$BUILD/icon.png" <<'PY'
+import re, sys, xml.etree.ElementTree as ET
+manifest, icon = sys.argv[1:3]
+root = ET.parse(manifest).getroot()
+ns = {'t':'http://tizen.org/ns/widgets', 'w':'http://www.w3.org/ns/widgets'}
+app = root.find('t:application', ns)
+name = root.find('w:name', ns)
+screen = root.find('w:feature', ns)
+icon_elem = root.find('w:icon', ns)
+if app is None or not re.fullmatch(r'[A-Za-z0-9]{10}', app.get('package','')):
+    sys.exit('ERROR: ID de paquete inválido en config.xml')
+if not app.get('id','').startswith(app.get('package','') + '.'):
+    sys.exit('ERROR: ID de aplicación y paquete no coinciden')
+if name is None or not (name.text or '').strip() or screen is None or icon_elem is None:
+    sys.exit('ERROR: faltan nombre, icono o feature de pantalla en config.xml')
+if icon_elem.get('src') != 'icon.png':
+    sys.exit('ERROR: config.xml no apunta a icon.png')
+with open(icon, 'rb') as f:
+    if f.read(8) != b'\x89PNG\r\n\x1a\n':
+        sys.exit('ERROR: icon.png inválido')
+print('✓ Manifiesto TV e icono verificados:', app.get('id'))
+PY
+
+if [[ ! -s "$BUILD/config.xml" || ! -s "$BUILD/js/local-config.js" || ! -s "$BUILD/icon.png" ]]; then
   echo "Error: faltan archivos esenciales en el paquete de Randy TV."
   exit 1
 fi
