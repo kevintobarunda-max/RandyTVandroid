@@ -89,6 +89,66 @@ Si \`sdb\` no conecta, comprueba que el modo desarrollador esté encendido, la I
 **Seguridad:** dado que el código Android de origen puede contener credenciales incrustadas, considera cambiarlas en tu proveedor antes de redistribuir un APK o compartir el código fuente. La nueva app Tizen no añade los secretos a GitHub.
 
 
+## Diagnóstico de error "Failed to install Tizen application"
+
+Si la instalación muestra `Warning: Not found tizen signature file` y `Warning: Not found tizen author signature file`, comprueba **si el archivo WGT tiene realmente ambas firmas**:
+
+~~~bash
+unzip -Z -1 "tizen/.buildResult/Randy TV.wgt" | grep -E '^(author-signature|signature1)\.xml
+
+| Tecla | Función |
+| --- | --- |
+| ▲ ▼ ◀ ▶ | Cambiar el elemento seleccionado en los menús |
+| OK / Enter | Abrir la opción enfocada o mostrar controles de reproducción |
+| Return / Back | Volver al listado, cerrar detalles o volver a Inicio |
+| CH+ / CH− | En reproducción de TV: canal siguiente / anterior |
+| Números | Durante TV: buscar canal por número \`num\` de la lista |
+| ◀ / ▶ durante película o serie | Retroceder / avanzar 15 segundos |
+| Play/Pause | Pausar o reanudar, si lo permite la señal |
+
+## Privacidad y protección
+- La app **no incluye credenciales por defecto**. Sólo emplea los datos ingresados por el propietario del televisor.
+- **Recordar acceso** almacena los datos en \`localStorage\` del TV, que no es un almacén cifrado de credenciales. Desactiva la casilla si es compartido.
+- Los favoritos y el historial se almacenan localmente.
+- Para cambiar las credenciales abre **Ajustes** y confirma. La app elimina las credenciales recordadas.
+- **No subas credenciales a GitHub**. Si una versión anterior tiene contraseñas embebidas, revócalas o cámbialas con el proveedor.
+
+## Arquitectura
+- \`config.xml\`: manifiesto Tizen, permisos de Internet y control remoto.
+- \`index.html\`: estructura accesible de configuración, Inicio, catálogo, detalles y reproductor.
+- \`css/app.css\`: interfaz grande y ligera para TV, compatible con motores de navegador antiguos.
+- \`js/app.js\`: catálogo Xtream, navegación, almacenamiento local, reproducción AVPlay/HTML5.
+
+## Pruebas pendientes en TV real
+- Confirmar instalación, certificado, tecla Return y registro de CH± en el modelo específico.
+- Comprobar autorización/CORS del API con el proveedor legítimo.
+- Validar códecs y contenedores en AVPlay; probar audio, HLS, buffering y cambio de canales.
+- Verificar rendimiento en Tizen antiguos (modelos 2017–2019), especialmente con catálogos muy grandes.
+- Revisar navegación al abrir el teclado virtual del TV.
+
+## Cambios intencionales respecto a RandyTVandroid
+El proyecto Android utiliza Kotlin/Jetpack Compose y ExoPlayer, mientras que Samsung exige app web empaquetada y reproducción basada en AVPlay. Se mantiene la estructura de categorías y contenidos de la API, pero se simplifica el diseño y la cantidad de elementos visibles para hacerlo más cómodo a personas mayores.
+
+tizen cli-config -l
+tizen security-profiles list
+tizen security-profiles list -n SamsungTV
+~~~
+
+Deben aparecer tanto `author-signature.xml` como `signature1.xml`. El nombre `SamsungTV` en el último comando es solo el ejemplo: debe coincidir con el perfil creado. **El instalador ahora detiene el proceso antes de instalar si falta una firma.**
+
+Si el perfil `SamsungTV` no existe o no aparece al listar perfiles, crea **Samsung → TV** (no un perfil genérico Tizen) desde Certificate Manager; el certificado de distribuidor debe incluir el **DUID** del televisor `UN55TU8200GXZS`, no su dirección IP. En Tizen Studio: Tools → Certificate Manager → + → Samsung → TV → autor → distribuidor → añadir el DUID del dispositivo conectado. En la extensión Tizen para VS Code: ACTIONS → Create Certificate → Create Samsung Certificate → seleccionar DUID → iniciar sesión Samsung.
+
+Si ya existe un `profiles.xml` de Samsung pero la CLI usa otro, configura **su ruta real**, sin copiar credenciales al proyecto:
+
+~~~bash
+tizen cli-config -l
+tizen cli-config -g "default.profiles.path=/RUTA/REAL/HASTA/profiles.xml"
+tizen security-profiles list
+~~~
+
+No publiques el XML ni los archivos `.p12`, no compartas sus contraseñas, y no subas el `.wgt` porque contiene la contraseña del servicio precargada.
+
+
 ## Uso con control remoto
 
 | Tecla | Función |
