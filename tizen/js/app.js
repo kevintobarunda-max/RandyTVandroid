@@ -7,7 +7,7 @@
   state.favorites=store.read("randy_tizen_favorites",[]);
   state.history=store.read("randy_tizen_history",[]);
   var playerMode="", overlayTimer=null, digitTimer=null, progressTimer=null, activeXhr=[], toastTimer=null, zapSwitchTimer=null, zapHideTimer=null, playSerial=0, trackMode="", subtitleOff=!!store.read("randy_tizen_subtitles_off",false);
-  var guideOpen=false, guideIndex=0, guideColumn=0, guideToken=0, epgCache={}, epgCacheOrder=[], epgPending={};
+  var guideOpen=false, guideIndex=0, guideColumn=0, guideToolbarFocus=false, guideToken=0, epgCache={}, epgCacheOrder=[], epgPending={};
   function safe(s){return String(s===null||s===undefined?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");}
   function digits(s){return /^\d+$/.test(String(s||""));}
   function adult(s){return /(xxx|adult|porno|porn\b|erotic|playboy|penthouse|brazzers|18\+|desnud|hustler|sex\b)/i.test(String(s||""));}
@@ -530,8 +530,8 @@
       var subscribers=epgPending[key];delete epgPending[key];
       var list=!err&&result&&result.epg_listings instanceof Array?result.epg_listings:[];
       list=list.filter(function(e){return e&&typeof e==="object";}).slice(0,8);
+      if(!epgCache[key])epgCacheOrder.push(key);
       epgCache[key]={list:list,at:Date.now()};
-      epgCacheOrder.push(key);
       if(epgCacheOrder.length>120){var remove=epgCacheOrder.shift();delete epgCache[remove];}
       for(var i=0;i<subscribers.length;i++)subscribers[i](list);
     });
@@ -552,8 +552,8 @@
       }
     }
     if(!current&&ordered.length){
-      current=ordered[0];
-      if(ordered.length>1)next=ordered[1];
+      // No informar como "en vivo" un programa que todavía no comienza.
+      next=ordered[0];
     }
     return {current:current,next:next};
   }
@@ -588,9 +588,9 @@
     var total=state.playlist.length;
     guideIndex=(guideIndex+total)%total;
     $("guide-channel-count").textContent=(guideIndex+1)+" / "+total;
-    var from=Math.max(0,Math.min(total-7,guideIndex-3));
-    if(from<0)from=0;
-    var to=Math.min(total,from+7),html="";
+    var visible=window.innerHeight<850?5:7;
+    var from=Math.max(0,Math.min(total-visible,guideIndex-Math.floor(visible/2)));
+    var to=Math.min(total,from+visible),html="";
     for(var i=from;i<to;i++){
       var it=state.playlist[i],pictureUrl=picture(it,"live"),isCurrent=i===guideIndex;
       html+='<button class="guide-row focusable'+(isCurrent?' selected':'')+'" type="button" data-guide-index="'+i+'">'+
@@ -609,7 +609,7 @@
       for(var z=0;z<imgs.length;z++)imgs[z].onerror=function(){this.style.display="none";};
     }
     var selected=$("guide-rail").querySelector(".guide-row.selected");
-    if(selected)selected.focus();
+    if(selected&&!guideToolbarFocus)selected.focus();
     var item=state.playlist[guideIndex],ticket=++guideToken;
     $("guide-channel-label").textContent=item.name||"";
     $("guide-programs").innerHTML='<div class="guide-no-epg">Consultando la programación…</div>';
@@ -623,7 +623,7 @@
     if(!state.playing||state.playing.type!=="live"||!state.playlist.length)return;
     clearTimeout(overlayTimer);
     hideZapCard();
-    guideOpen=true;guideIndex=state.playlistIndex;guideColumn=0;
+    guideOpen=true;guideIndex=state.playlistIndex;guideColumn=0;guideToolbarFocus=false;
     $("live-guide").className="live-guide";
     $("player-top").style.display="none";
     $("player-bottom").style.display="none";
@@ -631,7 +631,7 @@
   }
   function closeGuide(quiet){
     if(!guideOpen)return;
-    guideOpen=false;guideToken++;
+    guideOpen=false;guideToolbarFocus=false;guideToken++;
     $("live-guide").className="live-guide hidden";
     if(!quiet&&state.playing){
       showOverlay();
@@ -650,6 +650,17 @@
   function guideMove(step){
     if(!guideOpen)return;
     guideIndex+=step;renderGuide();
+  }
+  function guideActionMove(step){
+    var buttons=[$("guide-close"),$("guide-audio"),$("guide-subtitles"),$("guide-favorites")];
+    var idx=buttons.indexOf(document.activeElement);
+    idx=(idx+step+buttons.length)%buttons.length;
+    buttons[idx].focus();
+  }
+  function guideFocusRail(){
+    guideToolbarFocus=false;
+    var selected=$("guide-rail").querySelector(".guide-row.selected");
+    if(selected)selected.focus();
   }
   function guideSwitchColumn(step){
     if(!guideOpen)return;
@@ -804,8 +815,18 @@
         if(k>=48&&k<=57){event.preventDefault();closeGuide(true);numberKey(String(k-48));return;}
         if(k===427||k===33){event.preventDefault();closeGuide(true);zap(1);return;}
         if(k===428||k===34){event.preventDefault();closeGuide(true);zap(-1);return;}
+        if(guideToolbarFocus){
+          if(k===38){event.preventDefault();guideFocusRail();return;}
+          if(k===37||k===39||k===40){event.preventDefault();guideActionMove(k===37?-1:1);return;}
+        }
         if(k===38||k===40){event.preventDefault();guideMove(k===40?1:-1);return;}
-        if(k===37||k===39){event.preventDefault();guideSwitchColumn(k===39?1:-1);return;}
+        if(k===37||k===39){
+          event.preventDefault();
+          if(k===39&&guideColumn===1){
+            guideToolbarFocus=true;$("guide-audio").focus();
+          }else guideSwitchColumn(k===39?1:-1);
+          return;
+        }
         if(k===13){
           event.preventDefault();
           var focused=document.activeElement;
