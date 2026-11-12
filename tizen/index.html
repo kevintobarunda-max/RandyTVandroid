@@ -90,10 +90,11 @@
           <button id="player-pause" class="focusable" type="button">❚❚ Pausa</button>
           <button id="player-next" class="focusable" type="button">Siguiente ❯</button>
           <button id="player-fav" class="focusable" type="button">☆ Favorito</button>
+          <button id="player-guide" class="focusable guide-action" type="button">▤ Guía TV</button>
           <button id="player-audio" class="focusable track-action" type="button">♫ Audio</button>
           <button id="player-subtitles" class="focusable track-action" type="button">CC Subtítulos</button>
         </div>
-        <div id="player-help" class="player-help">▲ ▼ o CH +/− para hacer zapping <span>·</span> OK para controles <span>·</span> ↩ Volver</div>
+        <div id="player-help" class="player-help">CH +/− cambiar canal <span>·</span> OK abrir guía <span>·</span> Botones Audio y CC para pistas</div>
       </div>
       <div id="zap-card" class="zap-card hidden" role="status" aria-live="off">
         <span class="zap-accent"></span>
@@ -105,6 +106,31 @@
         </div>
         <div class="zap-remote">▲<br/>▼</div>
       </div>
+      <section id="live-guide" class="live-guide hidden" aria-label="Guía de canales" role="dialog" aria-modal="true">
+        <div class="guide-header">
+          <div><span class="guide-overline">RANDY TV <span>·</span> GUÍA EN VIVO</span><h2>Descubre qué ver</h2></div>
+          <div class="guide-live-indicator"><span class="guide-live-dot"></span> TV EN VIVO</div>
+        </div>
+        <div class="guide-body">
+          <div class="guide-channels">
+            <div class="guide-subhead">CANALES <span id="guide-channel-count"></span></div>
+            <div id="guide-rail" class="guide-rail" aria-label="Selecciona un canal"></div>
+          </div>
+          <div class="guide-shows">
+            <div class="guide-subhead">PROGRAMACIÓN <span id="guide-channel-label"></span></div>
+            <div id="guide-programs" class="guide-programs">
+              <div class="guide-no-epg">Selecciona un canal para consultar su programación.</div>
+            </div>
+            <div class="guide-hint">▲ ▼ Explorar canales <span>·</span> ◀ ▶ Revisar programación <span>·</span> OK Ver canal</div>
+          </div>
+        </div>
+        <div class="guide-toolbar">
+          <button id="guide-close" class="focusable" type="button">✕ Cerrar</button>
+          <button id="guide-audio" class="focusable" type="button">♫ Audio</button>
+          <button id="guide-subtitles" class="focusable" type="button">CC Subtítulos</button>
+          <button id="guide-favorites" class="focusable" type="button">☆ Favorito</button>
+        </div>
+      </section>
       <div id="track-panel" class="track-panel hidden" role="dialog" aria-modal="true" aria-label="Selección de audio y subtítulos">
         <div class="track-panel-head">
           <span class="eyebrow">RANDY TV · REPRODUCTOR</span>
