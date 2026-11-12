@@ -76,6 +76,29 @@ if [[ -z "$WGT" ]]; then
   exit 1
 fi
 
+# Validar firmas reales: algunos empaquetadores devuelven éxito aunque
+# falten certificados y el .wgt luego sea rechazado por el televisor.
+if ! command -v unzip >/dev/null 2>&1; then
+  echo "Error: falta 'unzip' para verificar el contenido del paquete."
+  exit 1
+fi
+echo "Comprobando firmas dentro de $(basename "$WGT")..."
+if ! unzip -Z -1 "$WGT" | grep -Fxq "author-signature.xml"; then
+  echo "ERROR DE FIRMA: falta author-signature.xml dentro del .wgt."
+  echo "Tizen no encontró o no pudo usar el certificado de autor."
+  echo "Revisa: tizen security-profiles list -n '$PROFILE'"
+  echo "Y el archivo de perfiles: tizen cli-config -l"
+  echo "Crea un certificado Samsung TV real y asociado al DUID del televisor."
+  exit 1
+fi
+if ! unzip -Z -1 "$WGT" | grep -Fxq "signature1.xml"; then
+  echo "ERROR DE FIRMA: falta signature1.xml dentro del .wgt."
+  echo "Revisa el certificado distribuidor Samsung TV y el DUID del televisor."
+  echo "Consulta: tizen security-profiles list -n '$PROFILE'"
+  exit 1
+fi
+echo "✓ Firmas de autor y distribuidor presentes en el paquete."
+
 echo "3/4 Conectando a Samsung en $TV_IP"
 sdb connect "$TV_IP"
 echo "Dispositivos conectados:"
