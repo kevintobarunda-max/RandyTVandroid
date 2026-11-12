@@ -6,7 +6,7 @@
   var store = {read:function(k,fall){try {var v=localStorage.getItem(k);return v===null?fall:JSON.parse(v);}catch(e){return fall;}},write:function(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}},remove:function(k){try{localStorage.removeItem(k);}catch(e){}}};
   state.favorites=store.read("randy_tizen_favorites",[]);
   state.history=store.read("randy_tizen_history",[]);
-  var playerMode="", overlayTimer=null, digitTimer=null, progressTimer=null, activeXhr=[], toastTimer=null;
+  var playerMode="", overlayTimer=null, digitTimer=null, progressTimer=null, activeXhr=[], toastTimer=null, zapSwitchTimer=null, zapHideTimer=null, playSerial=0, trackMode="", subtitleOff=!!store.read("randy_tizen_subtitles_off",false);
   function safe(s){return String(s===null||s===undefined?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");}
   function digits(s){return /^\d+$/.test(String(s||""));}
   function adult(s){return /(xxx|adult|porno|porn\b|erotic|playboy|penthouse|brazzers|18\+|desnud|hustler|sex\b)/i.test(String(s||""));}
@@ -287,31 +287,321 @@
   function closeDetail(){state.detail=null;state.seriesInfo=null;render();focusFirst();}
   function findHistory(t,i){var key=itemKey(t,i);for(var j=0;j<state.history.length;j++)if(state.history[j].key===key)return state.history[j];return null;}
   function rememberPosition(force){if(!state.playing||state.playing.type==="live")return;var t=state.playing.type,it=state.playing.item,pos=getCurrentTime();if(!isFinite(pos)||pos<0)return;var key=itemKey(t,it);state.history=state.history.filter(function(x){return x.key!==key;});state.history.unshift({key:key,position:Math.floor(pos),time:Date.now(),name:it.name||it.title||"",media:t==="series"?{id:it.id,name:it.name||it.title||"",container_extension:it.container_extension||"mp4"}:null});state.history=state.history.slice(0,40);store.write("randy_tizen_history",state.history);}
-  function play(type,item){if(!state.credentials)return;stopPlayback();state.playing={type:type,item:item};state.activeKey=itemKey(type,item);showView("player");$("player-title").textContent=item.name||item.title||"Reproducción";$("player-status").textContent="Randy TV";$("live-pill").className=type==="live"?"live-pill":"live-pill hidden";$("player-prev").className=type==="live"?"focusable":"focusable hidden";$("player-next").className=type==="live"?"focusable":"focusable hidden";$("player-fav").className=type==="series"?"focusable hidden":"focusable";$("player-pause").textContent="❚❚ Pausa";$("player-loading").className="player-loading";updatePlayerFav();showOverlay();var url=mediaURL(type,item);
-    if(window.webapis&&webapis.avplay){try{startAvplay(url,type,item);return;}catch(e){console.error(e);}}
-    startHtml(url,type,item);
+  function play(type,item){
+    if(!state.credentials)return;
+    clearTimeout(zapSwitchTimer);
+    stopPlayback();
+    var serial=++playSerial;
+    state.playing={type:type,item:item};
+    state.activeKey=itemKey(type,item);
+    showView("player");
+    $("player-title").textContent=item.name||item.title||"Reproducción";
+    $("player-status").textContent="Randy TV";
+    $("live-pill").className=type==="live"?"live-pill":"live-pill hidden";
+    $("player-prev").className=type==="live"?"focusable":"focusable hidden";
+    $("player-next").className=type==="live"?"focusable":"focusable hidden";
+    $("player-fav").className=type==="series"?"focusable hidden":"focusable";
+    $("player-pause").textContent="❚❚ Pausa";
+    $("player-loading").className="player-loading";
+    $("track-panel").className="track-panel hidden";
+    trackMode="";
+    updatePlayerFav();
+    if(type==="live")showZapCard(item,"Conectando con la señal…");
+    else hideZapCard();
+    showOverlay();
+    var url=mediaURL(type,item);
+    if(window.webapis&&webapis.avplay){
+      try{startAvplay(url,type,item,serial);return;}
+      catch(e){console.warn("AVPlay initialization error:",String(e));}
+    }
+    if(serial===playSerial)startHtml(url,type,item,serial);
   }
-  function startAvplay(url,type,item){var av=webapis.avplay;playerMode="av";av.open(url);av.setDisplayRect(0,0,window.innerWidth,window.innerHeight);av.setListener({onbufferingstart:function(){$("player-loading").className="player-loading";},onbufferingcomplete:function(){$("player-loading").className="player-loading hidden";},onstreamcompleted:function(){if(type!=="live")rememberPosition(true);},oncurrentplaytime:function(){},onerror:function(error){$("player-loading").className="player-loading hidden";notify("No se puede reproducir esta señal. "+String(error));},onevent:function(){},ondrmevent:function(){},onsubtitlechange:function(){}});av.prepareAsync(function(){try{av.play();$("player-loading").className="player-loading hidden";restorePosition(type,item);}catch(e){notify("Error al iniciar reproducción.");}},function(error){$("player-loading").className="player-loading hidden";notify("Formato o señal no compatible: "+error);});}
-  function startHtml(url,type,item){playerMode="html";var v=$("html-player");v.style.display="block";v.src=url;v.onerror=function(){notify("Formato no admitido en este TV. Prueba una señal HLS .m3u8.");$("player-loading").className="player-loading hidden";};v.onplaying=function(){$("player-loading").className="player-loading hidden";};v.onloadedmetadata=function(){restorePosition(type,item);};var p=v.play();if(p&&p.catch)p.catch(function(){notify("La señal no pudo iniciarse.");});}
+  function currentPlay(serial){return serial===playSerial&&!!state.playing;}
+  function playerReady(serial,type,item){
+    if(!currentPlay(serial))return;
+    $("player-loading").className="player-loading hidden";
+    if(type==="live"){
+      updateZapStatus("Señal lista");
+      clearTimeout(zapHideTimer);
+      zapHideTimer=setTimeout(hideZapCard,1750);
+    }
+    restorePosition(type,item);
+  }
+  function playerError(serial,message){
+    if(!currentPlay(serial))return;
+    $("player-loading").className="player-loading hidden";
+    if(state.playing.type==="live"){
+      updateZapStatus("Señal no disponible");
+      clearTimeout(zapHideTimer);
+      zapHideTimer=setTimeout(hideZapCard,3600);
+    }
+    notify(message);
+  }
+  function startAvplay(url,type,item,serial){
+    var av=webapis.avplay;
+    playerMode="av";
+    av.open(url);
+    av.setDisplayRect(0,0,window.innerWidth,window.innerHeight);
+    // Tizen permite como mínimo 4 s de búfer: no usar valores inferiores
+    // ni bloquear la UI durante prepareAsync.
+    if(type==="live"){
+      try{av.setBufferingParam("PLAYER_BUFFER_FOR_PLAY","PLAYER_BUFFER_SIZE_IN_SECOND",4);}catch(e){}
+      try{av.setTimeoutForBuffering(6);}catch(e){}
+    }
+    av.setListener({
+      onbufferingstart:function(){if(!currentPlay(serial))return;$("player-loading").className="player-loading";},
+      onbufferingcomplete:function(){if(!currentPlay(serial))return;playerReady(serial,type,item);},
+      onstreamcompleted:function(){if(currentPlay(serial)&&type!=="live")rememberPosition(true);},
+      oncurrentplaytime:function(){},
+      onerror:function(error){playerError(serial,"No se puede reproducir esta señal. "+String(error));},
+      onevent:function(){},
+      ondrmevent:function(){},
+      onsubtitlechange:function(){}
+    });
+    av.prepareAsync(function(){
+      if(!currentPlay(serial))return;
+      try{
+        av.play();
+        try{av.setSilentSubtitle(subtitleOff);}catch(e){}
+        playerReady(serial,type,item);
+      }catch(e){playerError(serial,"Error al iniciar reproducción.");}
+    },function(error){
+      playerError(serial,"Formato o señal no compatible: "+String(error));
+    });
+  }
+  function startHtml(url,type,item,serial){
+    if(!currentPlay(serial))return;
+    playerMode="html";
+    var v=$("html-player");v.style.display="block";v.src=url;
+    v.onerror=function(){playerError(serial,"Formato no admitido en este televisor. Prueba una señal HLS.");};
+    v.onplaying=function(){playerReady(serial,type,item);};
+    v.onloadedmetadata=function(){if(currentPlay(serial))restorePosition(type,item);};
+    var p=v.play();if(p&&p.catch)p.catch(function(){playerError(serial,"La señal no pudo iniciarse.");});
+  }
   function restorePosition(type,item){if(type==="live")return;var h=findHistory(type,item);if(h&&h.position>30){seekTo(h.position);notify("Continuando desde donde quedaste.");}}
   function seekTo(seconds){try{if(playerMode==="av")webapis.avplay.seekTo(Math.round(seconds*1000));else if(playerMode==="html")$("html-player").currentTime=seconds;}catch(e){}}
   function getCurrentTime(){try{if(playerMode==="av")return webapis.avplay.getCurrentTime()/1000;if(playerMode==="html")return $("html-player").currentTime||0;}catch(e){}return 0;}
   function getDuration(){try{if(playerMode==="av")return webapis.avplay.getDuration()/1000;if(playerMode==="html")return $("html-player").duration||0;}catch(e){}return 0;}
-  function stopPlayback(){if(!state.playing)return;rememberPosition();try{if(playerMode==="av"){var a=webapis.avplay;if(a.getState()!=="NONE")a.stop();a.close();}}catch(e){}try{var v=$("html-player");v.pause();v.removeAttribute("src");v.load();v.style.display="none";}catch(e){}playerMode="";state.playing=null;clearInterval(progressTimer);progressTimer=null;}
+  function stopPlayback(){
+    // Invalidar primero todos los callbacks de prepareAsync y eventos anteriores.
+    playSerial++;
+    clearTimeout(zapSwitchTimer);
+    clearTimeout(zapHideTimer);
+    clearTimeout(overlayTimer);
+    clearTimeout(digitTimer);
+    if(!state.playing)return;
+    rememberPosition();
+    try{
+      if(playerMode==="av"){
+        var a=webapis.avplay;
+        if(a.getState()!=="NONE")a.stop();
+        a.close();
+      }
+    }catch(e){try{webapis.avplay.close();}catch(ignored){}}
+    try{
+      var v=$("html-player");v.pause();v.removeAttribute("src");v.load();v.style.display="none";
+      v.onplaying=null;v.onerror=null;v.onloadedmetadata=null;
+    }catch(e){}
+    playerMode="";
+    state.playing=null;
+    clearInterval(progressTimer);progressTimer=null;
+    $("track-panel").className="track-panel hidden";
+    trackMode="";
+    hideZapCard();
+  }
   function stopPlayerIfOpen(){if(state.playing)stopPlayback();}
   function leavePlayer(){if(!state.playing)return;stopPlayback();showView("main");if(state.detail)renderDetail();else render();focusFirst();}
   function togglePause(){if(!state.playing)return;try{if(playerMode==="av"){var a=webapis.avplay,paused=a.getState()==="PAUSED";if(paused)a.play();else a.pause();$("player-pause").textContent=paused?"❚❚ Pausa":"▶ Continuar";}else{var v=$("html-player");if(v.paused){v.play();$("player-pause").textContent="❚❚ Pausa";}else{v.pause();$("player-pause").textContent="▶ Continuar";}}}catch(e){notify("No se puede pausar esta señal.");}showOverlay();}
-  function zap(step){if(!state.playing||state.playing.type!=="live"||!state.playlist.length)return;var n=state.playlist.length;state.playlistIndex=(state.playlistIndex+step+n)%n;play("live",state.playlist[state.playlistIndex]);}
+  function showZapCard(item,status){
+    var card=$("zap-card");if(!item||!card)return;
+    clearTimeout(zapHideTimer);
+    card.className="zap-card";
+    $("zap-title").textContent=item.name||"Canal";
+    var num=item.num||state.playlistIndex+1;
+    $("zap-number").textContent=String(num);
+    $("zap-position").textContent=state.playlist.length?(state.playlistIndex+1)+" / "+state.playlist.length:"";
+    $("zap-status").textContent=status||"Conectando…";
+    var logo=$("zap-logo");logo.textContent="▣";
+    var src=picture(item,"live");
+    if(/^https?:\/\//i.test(src)){
+      var img=document.createElement("img");img.alt="";
+      img.onerror=function(){logo.textContent="▣";};
+      img.src=src;logo.textContent="";logo.appendChild(img);
+    }
+  }
+  function updateZapStatus(text){
+    var card=$("zap-card");
+    if(card&&card.className.indexOf("hidden")===-1)$("zap-status").textContent=text;
+  }
+  function hideZapCard(){
+    clearTimeout(zapHideTimer);
+    $("zap-card").className="zap-card hidden";
+  }
+  function zap(step){
+    if(!state.playing||state.playing.type!=="live"||!state.playlist.length)return;
+    var n=state.playlist.length;
+    state.playlistIndex=(state.playlistIndex+step+n)%n;
+    var next=state.playlist[state.playlistIndex];
+    // La ficha responde en este mismo evento de control, sin esperar a la red.
+    showZapCard(next,"Cambiando de canal…");
+    // Agrupar pulsaciones rápidas: evita iniciar varias decodificaciones seguidas.
+    clearTimeout(zapSwitchTimer);
+    zapSwitchTimer=setTimeout(function(){
+      if(!state.playing||state.playing.type!=="live")return;
+      play("live",next);
+    },90);
+  }
   function updatePlayerFav(){if(!state.playing)return;var p=state.playing;$("player-fav").textContent=isFav(p.type,p.item)?"★ Favorito":"☆ Favorito";}
-  function showOverlay(){if(!state.playing)return;$("player-top").style.display="flex";$("player-bottom").style.display="block";clearTimeout(overlayTimer);overlayTimer=setTimeout(function(){$("player-top").style.display="none";$("player-bottom").style.display="none";},6500);clearInterval(progressTimer);progressTimer=setInterval(function(){if(!state.playing)return;var dur=getDuration(),cur=getCurrentTime();$("progress-fill").style.width=dur>0&&isFinite(dur)?Math.max(0,Math.min(100,cur/dur*100))+"%":"0%";$("time-info").textContent=dur>0&&isFinite(dur)?fmt(cur)+" / "+fmt(dur):"";},1000);}
+  function showOverlay(){
+    if(!state.playing)return;
+    $("player-top").style.display="flex";
+    $("player-bottom").style.display="block";
+    clearTimeout(overlayTimer);
+    overlayTimer=setTimeout(function(){
+      if($("track-panel").className.indexOf("hidden")===-1)return;
+      $("player-top").style.display="none";
+      $("player-bottom").style.display="none";
+    },6500);
+    if(progressTimer)return;
+    progressTimer=setInterval(function(){
+      if(!state.playing)return;
+      var dur=getDuration(),cur=getCurrentTime();
+      $("progress-fill").style.width=dur>0&&isFinite(dur)?Math.max(0,Math.min(100,cur/dur*100))+"%":"0%";
+      $("time-info").textContent=dur>0&&isFinite(dur)?fmt(cur)+" / "+fmt(dur):"";
+    },1000);
+  }
+  function trackExtra(track){
+    if(!track||!track.extra_info)return {};
+    if(typeof track.extra_info==="object")return track.extra_info;
+    try{return JSON.parse(track.extra_info);}catch(e){return {};}
+  }
+  function prettyLanguage(code){
+    var lang=String(code||"").toLowerCase().replace(/_/g,"-").split("-")[0];
+    var names={es:"Español",spa:"Español",en:"Inglés",eng:"Inglés",fr:"Francés",fra:"Francés",fre:"Francés",pt:"Portugués",por:"Portugués",de:"Alemán",deu:"Alemán",ger:"Alemán",it:"Italiano",ita:"Italiano",ja:"Japonés",jpn:"Japonés",ko:"Coreano",kor:"Coreano",zh:"Chino",zho:"Chino",chi:"Chino",ru:"Ruso",rus:"Ruso",und:"Idioma no especificado",unknown:"Idioma no especificado"};
+    return names[lang]||String(code||"Idioma no especificado").toUpperCase();
+  }
+  function getTracks(mode){
+    var kind=mode==="audio"?"AUDIO":"TEXT",available=[],currentIndex=-1;
+    if(playerMode==="av"&&window.webapis&&webapis.avplay){
+      try{
+        var av=webapis.avplay;
+        var all=av.getTotalTrackInfo()||[];
+        for(var i=0;i<all.length;i++){
+          var t=all[i];if(t.type!==kind)continue;
+          var info=trackExtra(t),lang=mode==="audio"?(info.language||info.track_lang):(info.track_lang||info.language);
+          var label=prettyLanguage(lang);
+          available.push({index:Number(t.index),label:label});
+        }
+        var playing=av.getCurrentStreamInfo()||[];
+        for(var j=0;j<playing.length;j++)if(playing[j].type===kind)currentIndex=Number(playing[j].index);
+      }catch(e){console.warn("Tracks unavailable:",String(e));}
+    }else if(playerMode==="html"){
+      var v=$("html-player"),list=mode==="audio"?v.audioTracks:v.textTracks;
+      if(list){
+        for(var x=0;x<list.length;x++){
+          var track=list[x];available.push({index:x,label:prettyLanguage(track.language||"")});
+          if((mode==="audio"&&track.enabled)||(mode==="subtitles"&&track.mode==="showing"))currentIndex=x;
+        }
+      }
+    }
+    return {list:available,current:currentIndex};
+  }
+  function chooseTrack(mode,index){
+    var info=getTracks(mode),found=false;
+    for(var i=0;i<info.list.length;i++)if(info.list[i].index===index)found=true;
+    if(index!==-1&&!found){notify("Esta pista ya no está disponible.");return false;}
+    try{
+      if(playerMode==="av"){
+        if(mode==="audio"){
+          if(index===-1)return false;
+          webapis.avplay.setSelectTrack("AUDIO",index);
+        }else{
+          if(index===-1)webapis.avplay.setSilentSubtitle(true);
+          else{
+            webapis.avplay.setSilentSubtitle(false);
+            webapis.avplay.setSelectTrack("TEXT",index);
+          }
+        }
+      }else if(playerMode==="html"){
+        var v=$("html-player"),list=mode==="audio"?v.audioTracks:v.textTracks;
+        if(!list){notify("El reproductor no ofrece cambio de pistas.");return false;}
+        if(mode==="audio"){
+          if(index<0)return false;
+          for(var x=0;x<list.length;x++)list[x].enabled=(x===index);
+        }else{
+          for(var y=0;y<list.length;y++)list[y].mode=(index===y?"showing":"disabled");
+        }
+      }else return false;
+      if(mode==="subtitles"){
+        subtitleOff=index===-1;
+        store.write("randy_tizen_subtitles_off",subtitleOff);
+      }
+      notify(mode==="audio"?"Pista de audio seleccionada.":index===-1?"Subtítulos desactivados.":"Subtítulos activados.");
+      return true;
+    }catch(e){
+      notify("La señal no permite cambiar esta pista.");
+      return false;
+    }
+  }
+  function openTrackPanel(mode){
+    if(!state.playing)return;
+    clearTimeout(overlayTimer);
+    trackMode=mode;
+    $("track-title").textContent=mode==="audio"?"Pistas de audio":"Subtítulos";
+    $("track-description").textContent=mode==="audio"?"Selecciona el idioma de audio que tenga esta señal.":"Activa, desactiva o cambia los subtítulos disponibles.";
+    $("track-panel").className="track-panel";
+    showOverlay();
+    renderTrackOptions();
+  }
+  function renderTrackOptions(){
+    var panel=$("track-panel"),el=$("track-options");if(!trackMode)return;
+    el.innerHTML="";
+    var info=getTracks(trackMode),items=info.list;
+    function option(text,index,selected){
+      var b=document.createElement("button");b.type="button";
+      b.className="track-option focusable"+(selected?" selected":"");
+      b.setAttribute("aria-pressed",selected?"true":"false");
+      var label=document.createElement("span");label.textContent=text;b.appendChild(label);
+      if(selected){var check=document.createElement("small");check.textContent="✓ ACTUAL";b.appendChild(check);}
+      b.onclick=function(){if(chooseTrack(trackMode,index))closeTrackPanel();else renderTrackOptions();};
+      el.appendChild(b);
+    }
+    if(trackMode==="subtitles")option("Desactivados",-1,subtitleOff);
+    for(var i=0;i<items.length;i++){
+      var track=items[i];
+      option(track.label+" · Pista "+(i+1),track.index,trackMode==="subtitles"?!subtitleOff&&(info.current===track.index||(info.current<0&&i===0)):info.current===track.index||(info.current<0&&i===0));
+    }
+    if(!items.length){
+      var msg=document.createElement("div");msg.className="track-empty";
+      msg.textContent=trackMode==="audio"?"No hay pistas alternativas disponibles en esta señal.":"La señal no informa pistas de subtítulos. Puedes dejarlos desactivados.";
+      el.appendChild(msg);
+    }
+    var first=el.querySelector(".track-option.selected")||el.querySelector(".track-option")||$("track-close");
+    if(first)first.focus();
+  }
+  function closeTrackPanel(){
+    $("track-panel").className="track-panel hidden";
+    var returnTo=trackMode==="audio"?$("player-audio"):$("player-subtitles");
+    trackMode="";
+    showOverlay();
+    if(returnTo)returnTo.focus();
+  }
+  function moveTrackFocus(step){
+    var nodes=$("track-panel").querySelectorAll(".focusable"),visible=[];
+    for(var i=0;i<nodes.length;i++)if(nodes[i].getBoundingClientRect().height>0)visible.push(nodes[i]);
+    if(!visible.length)return;
+    var idx=visible.indexOf(document.activeElement),next=(idx+step+visible.length)%visible.length;
+    visible[next].focus();
+    if(visible[next].scrollIntoView)visible[next].scrollIntoView({block:"nearest"});
+  }
   function two(n){return n<10?"0"+n:String(n);}function fmt(s){var n=Math.floor(s)||0;return two(Math.floor(n/3600))+":"+two(Math.floor(n%3600/60))+":"+two(n%60);}
   function clearSettings(){stopPlayback();state.credentials=null;state.live=[];state.vod=[];state.series=[];state.favorites=store.read("randy_tizen_favorites",[]);store.remove("randy_tizen_login");$("password").value="";showView("setup");setLoginError("");$("server").focus();}
   function settings(){if(confirm("¿Quieres cambiar los datos de acceso?"))clearSettings();}
   function moveFocus(key){var nodes=document.querySelectorAll(".view:not(.hidden) .focusable");var valid=[];for(var i=0;i<nodes.length;i++){var n=nodes[i],r=n.getBoundingClientRect();if(r.width>0&&r.height>0&&getComputedStyle(n).visibility!=="hidden")valid.push(n);}if(!valid.length)return;var current=document.activeElement,index=valid.indexOf(current);if(index<0){valid[0].focus();return;}var r0=current.getBoundingClientRect(),x0=(r0.left+r0.right)/2,y0=(r0.top+r0.bottom)/2,nearest=null,best=Infinity;for(var j=0;j<valid.length;j++){var e=valid[j];if(e===current)continue;var r=e.getBoundingClientRect(),x=(r.left+r.right)/2,y=(r.top+r.bottom)/2,dx=x-x0,dy=y-y0;if(key==="left"&&dx>=-5||key==="right"&&dx<=5||key==="up"&&dy>=-5||key==="down"&&dy<=5)continue;var primary=key==="left"||key==="right"?Math.abs(dx):Math.abs(dy),secondary=key==="left"||key==="right"?Math.abs(dy):Math.abs(dx),score=primary+secondary*2.3;if(score<best){best=score;nearest=e;}}if(nearest){nearest.focus();if(nearest.scrollIntoView)nearest.scrollIntoView({block:"nearest",inline:"nearest"});}}
-  function pressBack(){if(state.playing){leavePlayer();return;}if(state.detail){closeDetail();return;}if(state.section!=="home"){selectSection("home");return;}notify("Ya estás en Inicio. Usa las flechas para elegir.");}
-  function numberKey(num){if(!state.playing||state.playing.type!=="live")return;state.remoteDigits=(state.remoteDigits+num).slice(-4);$("number-bubble").textContent=state.remoteDigits;$("number-bubble").className="number-bubble";clearTimeout(digitTimer);digitTimer=setTimeout(function(){var n=parseInt(state.remoteDigits,10);state.remoteDigits="";$("number-bubble").className="number-bubble hidden";if(!n)return;var match=null;for(var j=0;j<state.playlist.length;j++){if(Number(state.playlist[j].num)===n){match=j;break;}}if(match===null&&n<=state.playlist.length)match=n-1;if(match!==null){state.playlistIndex=match;play("live",state.playlist[match]);}else notify("No existe el canal "+n+" en esta lista.");},1100);}
+  function pressBack(){if($("track-panel").className.indexOf("hidden")===-1){closeTrackPanel();return;}if(state.playing){leavePlayer();return;}if(state.detail){closeDetail();return;}if(state.section!=="home"){selectSection("home");return;}notify("Ya estás en Inicio. Usa las flechas para elegir.");}
+  function numberKey(num){if(!state.playing||state.playing.type!=="live")return;state.remoteDigits=(state.remoteDigits+num).slice(-4);$("number-bubble").textContent=state.remoteDigits;$("number-bubble").className="number-bubble";clearTimeout(digitTimer);digitTimer=setTimeout(function(){var n=parseInt(state.remoteDigits,10);state.remoteDigits="";$("number-bubble").className="number-bubble hidden";if(!n)return;var match=null;for(var j=0;j<state.playlist.length;j++){if(Number(state.playlist[j].num)===n){match=j;break;}}if(match===null&&n<=state.playlist.length)match=n-1;if(match!==null){state.playlistIndex=match;showZapCard(state.playlist[match],"Cambiando de canal…");play("live",state.playlist[match]);}else notify("No existe el canal "+n+" en esta lista.");},900);}
   function keyDown(event){var k=event.keyCode||event.which,playing=!!state.playing,typing=document.activeElement&&(/INPUT|TEXTAREA/.test(document.activeElement.tagName));var defs={37:"left",38:"up",39:"right",40:"down"};if(k===10009||k===8||k===27){if(typing){document.activeElement.blur();return;}event.preventDefault();pressBack();return;}
-    if(playing){if(k>=48&&k<=57){event.preventDefault();numberKey(String(k-48));return;}if(k===427||k===33||k===38){event.preventDefault();zap(1);return;}if(k===428||k===34||k===40){event.preventDefault();zap(-1);return;}if(k===415||k===19||k===10252){event.preventDefault();togglePause();return;}if(k===413){event.preventDefault();leavePlayer();return;}if(k===37||k===39){event.preventDefault();if(state.playing.type!=="live")seekTo(Math.max(0,getCurrentTime()+(k===39?15:-15)));showOverlay();return;}if(k===13){event.preventDefault();if($("player-bottom").style.display==="none"){showOverlay();$("player-pause").focus();}else if(document.activeElement&&document.activeElement.tagName==="BUTTON")document.activeElement.click();else showOverlay();return;}showOverlay();return;}
+    if(playing){if($("track-panel").className.indexOf("hidden")===-1){if(k===38||k===40){event.preventDefault();moveTrackFocus(k===40?1:-1);return;}if(k===13){event.preventDefault();var chosen=document.activeElement;if(chosen&&chosen.tagName==="BUTTON")chosen.click();return;}if(k===37||k===39){event.preventDefault();moveTrackFocus(k===39?1:-1);return;}return;}if(k===405){event.preventDefault();openTrackPanel("subtitles");return;}if(k===404){event.preventDefault();openTrackPanel("audio");return;}if(k>=48&&k<=57){event.preventDefault();numberKey(String(k-48));return;}if(k===427||k===33||k===38){event.preventDefault();zap(1);return;}if(k===428||k===34||k===40){event.preventDefault();zap(-1);return;}if(k===415||k===19||k===10252){event.preventDefault();togglePause();return;}if(k===413){event.preventDefault();leavePlayer();return;}if(k===37||k===39){event.preventDefault();if(state.playing.type!=="live")seekTo(Math.max(0,getCurrentTime()+(k===39?15:-15)));showOverlay();return;}if(k===13){event.preventDefault();if($("player-bottom").style.display==="none"){showOverlay();$("player-pause").focus();}else if(document.activeElement&&document.activeElement.tagName==="BUTTON")document.activeElement.click();else showOverlay();return;}showOverlay();return;}
     if(typing){if(k===13&&document.activeElement.type==="checkbox"){event.preventDefault();document.activeElement.click();return;}if(k===38||k===40){event.preventDefault();moveFocus(k===38?"up":"down");return;}if(k===13){event.preventDefault();document.activeElement.blur();}return;}
     if(defs[k]){event.preventDefault();moveFocus(defs[k]);return;}if(k===13){var a=document.activeElement;if(a&&a.tagName==="BUTTON"){event.preventDefault();a.click();}return;}if(k===427||k===428){event.preventDefault();selectSection("live");return;}
   }
@@ -322,7 +612,7 @@
   }
   function attach(){document.addEventListener("keydown",keyDown);$("login-form").addEventListener("submit",startLogin);$("go-home").onclick=function(){selectSection("home");};$("settings-button").onclick=settings;
     var tabs=document.querySelectorAll("[data-nav]");for(var i=0;i<tabs.length;i++)tabs[i].onclick=function(){selectSection(this.getAttribute("data-nav"));};
-    $("player-back").onclick=leavePlayer;$("player-prev").onclick=function(){zap(-1);};$("player-next").onclick=function(){zap(1);};$("player-pause").onclick=togglePause;$("player-fav").onclick=function(){if(state.playing)toggleFav(state.playing.type,state.playing.item);};
+    $("player-back").onclick=leavePlayer;$("player-prev").onclick=function(){zap(-1);};$("player-next").onclick=function(){zap(1);};$("player-pause").onclick=togglePause;$("player-fav").onclick=function(){if(state.playing)toggleFav(state.playing.type,state.playing.item);};$("player-audio").onclick=function(){openTrackPanel("audio");};$("player-subtitles").onclick=function(){openTrackPanel("subtitles");};$("track-close").onclick=closeTrackPanel;
     document.addEventListener("visibilitychange",function(){if(document.hidden&&state.playing){rememberPosition();try{if(playerMode==="av")webapis.avplay.pause();else $("html-player").pause();}catch(e){}}});
     window.addEventListener("beforeunload",function(){stopPlayback();});
     registerKeys();updateClock();setInterval(updateClock,60000);var local=window.RANDY_LOCAL_CONFIG;var saved=(local&&local.server&&local.username&&local.password)?local:store.read("randy_tizen_login",null);if(saved&&saved.server&&saved.username&&saved.password){state.credentials=saved;$("server").value=saved.server;$("username").value=saved.username;$("password").value=saved.password;launch();}else{showView("setup");$("server").focus();}
