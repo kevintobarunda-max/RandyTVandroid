@@ -48,22 +48,24 @@ if [[ ! -s "$PROJECT/js/local-config.js" ]]; then
   python3 "$PROJECT/scripts/preparar-credenciales.py"
 fi
 
-# Web CLI legacy can fail with "javax/xml/bind/JAXBException" on Java 11+.
-# Prefer a locally installed Java 8 for this process only.
-JAVA8_HOME="$(/usr/libexec/java_home -v 1.8 2>/dev/null || true)"
-if [[ -z "$JAVA8_HOME" || ! -x "$JAVA8_HOME/bin/java" ]]; then
-  echo "Error: no se encontró Java 8, necesario para esta versión del Web CLI de Tizen."
-  echo "En Mac M1 instala Azul Zulu 8: brew install --cask zulu@8"
-  echo "Luego vuelve a ejecutar este mismo script."
+# La versión Samsung es HTML/CSS/JS estático.
+# Algunas versiones del antiguo Web CLI fuerzan su propio Java moderno y fallan
+# durante build-web con javax/xml/bind/JAXBException incluso con JAVA_HOME=8.
+# Preparar los archivos web directamente evita esa fase sin omitir la firma.
+echo "1/4 Preparando aplicación web estática para Tizen..."
+BUILD="$PROJECT/.buildResult"
+if [[ -d "$BUILD" ]]; then
+  # Sólo limpiamos el directorio de salida generado por el propio instalador.
+  find "$BUILD" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+fi
+mkdir -p "$BUILD/js" "$BUILD/css"
+cp "$PROJECT/config.xml" "$PROJECT/index.html" "$BUILD/"
+cp "$PROJECT/css/app.css" "$BUILD/css/"
+cp "$PROJECT/js/app.js" "$PROJECT/js/local-config.js" "$BUILD/js/"
+if [[ ! -s "$BUILD/config.xml" || ! -s "$BUILD/js/local-config.js" ]]; then
+  echo "Error: faltan archivos esenciales en el paquete de Randy TV."
   exit 1
 fi
-export JAVA_HOME="$JAVA8_HOME"
-export PATH="$JAVA_HOME/bin:$PATH"
-echo "Java seleccionado para compilar:"
-"$JAVA_HOME/bin/java" -version 2>&1 | head -n 3
-
-echo "1/4 Compilando aplicación web Tizen..."
-tizen build-web -- "$PROJECT"
 
 echo "2/4 Empaquetando y firmando con perfil: $PROFILE"
 tizen package -t wgt -s "$PROFILE" -- "$PROJECT/.buildResult"
