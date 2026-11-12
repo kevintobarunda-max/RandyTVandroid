@@ -204,6 +204,19 @@ bash tizen/scripts/instalar-en-tv.sh 192.168.0.14 RANDYTVPRO
 
 Si vuelve a fallar, **no regenerar certificados ni credenciales**. El siguiente diagnóstico es aislar el manifiesto con el mismo contenido de la app, o revisar el mensaje de error detallado del instalador para esa versión de Tizen.
 
+## Error al transferir el paquete al Samsung
+
+El error `Can not transfer ... package` significa que **Tizen no pudo enviar el archivo al TV**. No es todavía un rechazo de firma, ID ni manifiesto.
+
+El instalador comprueba ahora la integridad ZIP, muestra el tamaño y prueba primero `tizen install`. Si falla específicamente la transferencia, intenta un `sdb push` con nombre remoto único y luego `sdb shell 0 vd_appinstall RANDYTV123.RandyTV <ruta-remota>`. No borra las aplicaciones existentes ni modifica certificados o credenciales.
+
+Si también falla el envío directo, comprueba que `sdb devices` muestre el Samsung, revisa tamaño del WGT y espacio del dispositivo. No declares instalada la aplicación sin confirmación del televisor.
+
+```bash
+git pull --ff-only
+bash tizen/scripts/instalar-en-tv.sh 192.168.0.14 RANDYTVPRO
+```
+
 ## Uso con control remoto
 
 | Tecla | Función |
