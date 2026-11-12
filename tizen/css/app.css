@@ -207,6 +207,41 @@ input{transition:border-color .14s ease}
 .number-bubble{position:absolute;right:55px;top:30%;border-radius:15px;padding:18px 29px;background:#12372f;border:2px solid #b1f4cb;font-size:48px;font-weight:bold}
 .toast{position:absolute;z-index:20;left:50%;bottom:100px;transform:translateX(-50%);background:#d9ffe9;color:#143527;padding:17px 25px;border-radius:13px;max-width:75%;text-align:center;font-size:20px;font-weight:bold}
 
+/* Zapping: vista instantánea de canal, sin dependencias ni animaciones de video. */
+.zap-card{position:absolute;z-index:8;left:56px;bottom:235px;display:flex;align-items:center;width:660px;min-height:164px;padding:23px 25px;border-radius:20px;border:1px solid #47665e;background:rgba(8,24,30,.96);box-shadow:0 16px 42px rgba(0,0,0,.45);overflow:hidden;pointer-events:none}
+.zap-accent{position:absolute;left:0;top:0;bottom:0;width:5px;background:#adf4c7}
+.zap-logo{flex:none;width:94px;height:94px;border:1px solid #3c5f61;border-radius:13px;background:#173540;display:flex;align-items:center;justify-content:center;margin-right:22px;color:#aef3cc;font-size:46px;font-weight:bold;overflow:hidden}
+.zap-logo img{display:block;width:85px;height:85px;object-fit:contain}
+.zap-copy{min-width:0;flex:1}
+.zap-eyebrow{font-size:13px;font-weight:bold;letter-spacing:.09em;color:#9de8c8;white-space:nowrap}
+.zap-eyebrow span{margin-left:12px;color:#7eabb0;letter-spacing:0}
+.zap-main{display:flex;align-items:baseline;min-width:0;margin:13px 0 8px;gap:13px}
+.zap-number{font-size:33px;font-weight:900;color:#aeffd0}
+.zap-main strong{font-size:28px;line-height:1.2;color:#f5fffb;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.zap-status{font-size:16px;color:#a7bdc6;line-height:1.4}
+.zap-remote{flex:none;margin-left:16px;color:#91bdae;font-size:26px;line-height:28px;text-align:center;font-weight:bold}
+.track-action{background:#172e35!important;border-color:#37545a!important}
+.track-action:focus{background:#b4f5cf!important;color:#08231a!important;border-color:#b4f5cf!important}
+.track-panel{position:absolute;z-index:16;right:34px;top:50%;width:525px;max-height:82%;transform:translateY(-50%);display:flex;flex-direction:column;background:#0e1c27;border:1px solid #4a686b;border-radius:20px;box-shadow:0 18px 65px rgba(0,0,0,.7);padding:26px 26px 22px;color:#eefcfb}
+.track-panel-head{flex:none}
+.track-panel-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.track-panel h2{font-size:31px;letter-spacing:-.03em;margin:14px 0 8px}
+.track-panel p{margin:0;font-size:16px;line-height:1.45;color:#aebfc7}
+.track-close{background:#1b3642;border:1px solid #4d6a6f;border-radius:10px;padding:10px 14px;color:#def7f0;white-space:nowrap;font-size:17px}
+.track-close:focus{background:#b5f8d2;color:#123126}
+.track-options{overflow-y:auto;min-height:70px;max-height:500px;padding:10px 5px 12px;margin-top:15px}
+.track-option{display:flex;justify-content:space-between;align-items:center;width:100%;min-height:68px;text-align:left;background:#17303d;color:#effdfa;border:1px solid #365260;border-radius:12px;padding:15px 19px;margin:0 0 12px;font-size:21px}
+.track-option small{color:#9eb5c2;font-size:16px;margin-left:15px}
+.track-option.selected{background:#1c4538;border-color:#73bf96;color:#b8ffd4}
+.track-option.selected small{color:#a6d8bd}
+.track-option:focus{background:#a8f4c4;color:#0b251d;border-color:#a8f4c4}
+.track-option:focus small{color:#315549}
+.track-empty{font-size:19px;color:#b1c4cf;line-height:1.45;background:#1a2d38;padding:21px;border-radius:12px}
+.track-help{flex:none;margin-top:9px!important;font-size:14px!important;color:#8ca8b3!important}
+@media(max-width:1500px){.zap-card{width:540px;left:28px;bottom:230px}.zap-main strong{font-size:24px}.track-panel{width:470px;right:20px}.player-actions button{padding:13px 18px;margin:0 5px;font-size:18px}}
+@media(max-width:1024px){.zap-card{width:480px;bottom:190px}.zap-logo{width:70px;height:70px;font-size:30px}.zap-main strong{font-size:22px}.track-panel{width:420px}.player-actions{flex-wrap:wrap}.player-actions button{margin-bottom:12px}}
+@media(max-width:720px){.zap-card{width:calc(100% - 32px);left:16px;bottom:155px;padding:16px}.zap-main strong{font-size:19px}.zap-logo{width:55px;height:55px;margin-right:12px}.zap-logo img{width:48px;height:48px}.zap-remote{display:none}.track-panel{width:calc(100% - 24px);right:12px;padding:18px}.track-panel h2{font-size:25px}.track-option{font-size:18px}}
+
 @media(max-width:1500px){
   .sidebar{width:228px;flex-basis:228px}
   .topbar{padding-left:32px;padding-right:32px}
