@@ -7,6 +7,7 @@
   state.favorites=store.read("randy_tizen_favorites",[]);
   state.history=store.read("randy_tizen_history",[]);
   var playerMode="", overlayTimer=null, digitTimer=null, progressTimer=null, activeXhr=[], toastTimer=null, zapSwitchTimer=null, zapHideTimer=null, playSerial=0, trackMode="", subtitleOff=!!store.read("randy_tizen_subtitles_off",false);
+  var guideOpen=false, guideIndex=0, guideColumn=0, guideToken=0, epgCache={}, epgCacheOrder=[], epgPending={};
   function safe(s){return String(s===null||s===undefined?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");}
   function digits(s){return /^\d+$/.test(String(s||""));}
   function adult(s){return /(xxx|adult|porno|porn\b|erotic|playboy|penthouse|brazzers|18\+|desnud|hustler|sex\b)/i.test(String(s||""));}
@@ -95,7 +96,7 @@
     var h='<div class="section-top"><div><span class="eyebrow">TU BIBLIOTECA</span><h1>'+label+'</h1></div><span class="count" id="result-count">Cargando…</span></div>'+
       '<div class="toolbar"><input class="search-input focusable" id="search" placeholder="⌕  Buscar por nombre" aria-label="Buscar '+label+'" type="search"/></div>'+
       '<div class="categories" id="cats" aria-label="Filtrar por categoría"></div>'+
-      '<div class="media-grid'+(state.section==="vod"||state.section==="series"?" poster-grid":"")+'" id="media-grid"></div>'+
+      '<div class="media-grid'+(state.section==="vod"||state.section==="series"?" poster-grid":state.section==="live"?" live-grid":"")+'" id="media-grid"></div>'+
       '<div class="more-holder" id="more-holder"></div>';
     $("content").innerHTML=h;
     $("search").value=state.query;
@@ -230,13 +231,19 @@
     var fragment=document.createDocumentFragment();
     slice.forEach(function(w,idx){
       var it=w.item,ty=w.type,b=document.createElement("button");
-      b.type="button";b.className="media-card focusable"+(ty==="live"?"":" poster");
+      b.type="button";b.className="media-card focusable"+(ty==="live"?" live-tile":" poster");
       b.setAttribute("aria-label",it.name||"Abrir contenido");
       b.setAttribute("data-item-key",itemKey(ty,it));
       var src=picture(it,ty),img=/^https?:\/\//i.test(src)?'<img alt="" data-src="'+safe(src)+'"/>':'<span class="card-placeholder">'+(ty==="live"?"▣":"▶")+'</span>';
-      b.innerHTML=img+'<span class="text-content"><strong>'+safe(it.name)+'</strong><small>'+
-        (ty==="live"?"CANAL "+safe(it.num||idx+1):ty==="vod"?"PELÍCULA":"SERIE")+
-        (isFav(ty,it)?' <span class="star">★</span>':"")+'</small></span>';
+      if(ty==="live"){
+        b.innerHTML='<span class="logo-pad">'+img+'</span><span class="text-content">'+
+          '<span class="live-number">'+safe(it.num||idx+1)+'</span><strong>'+safe(it.name)+'</strong>'+
+          '<small>● EN VIVO'+(isFav(ty,it)?" · ★":"")+'</small></span>';
+      }else{
+        b.innerHTML=img+'<span class="text-content"><strong>'+safe(it.name)+'</strong><small>'+
+          (ty==="vod"?"PELÍCULA":"SERIE")+
+          (isFav(ty,it)?' <span class="star">★</span>':"")+'</small></span>';
+      }
       b.onclick=function(){openItem(ty,it,list);};
       fragment.appendChild(b);
     });
@@ -474,6 +481,173 @@
     if(!track||!track.extra_info)return {};
     if(typeof track.extra_info==="object")return track.extra_info;
     try{return JSON.parse(track.extra_info);}catch(e){return {};}
+  }
+  function epgUrl(item){
+    var c=credentials();
+    return c.server+"/player_api.php?username="+encode(c.username)+"&password="+encode(c.password)+"&action=get_short_epg&stream_id="+encode(item.stream_id)+"&limit=5";
+  }
+  function epgText(value){
+    var str=String(value===null||value===undefined?"":value);
+    if(!str)return "";
+    if(str.length>8192)return str.slice(0,8192);
+    if(!/^[A-Za-z0-9+\/]+={0,2}$/.test(str)||str.length%4!==0)return str;
+    try{
+      var decoded=atob(str),encoded="";
+      for(var i=0;i<decoded.length;i++)encoded+="%"+("0"+decoded.charCodeAt(i).toString(16)).slice(-2);
+      var result=decodeURIComponent(encoded);
+      if(/[\x00-\x08\x0b-\x1f]/.test(result))return str;
+      return result;
+    }catch(e){return str;}
+  }
+  function epgTime(item,field){
+    var value=Number(item[field+"_timestamp"]);
+    if(value>1000000000)return new Date(value*1000);
+    var text=String(item[field]||"").replace(" ","T");
+    var date=new Date(text);
+    return isNaN(date.getTime())?null:date;
+  }
+  function epgClock(date){
+    if(!date)return "—";
+    return two(date.getHours())+":"+two(date.getMinutes());
+  }
+  function loadEpg(item,cb){
+    var key=String(item&&item.stream_id||"");
+    if(!key||!state.credentials){cb([]);return;}
+    var cached=epgCache[key],now=Date.now();
+    if(cached&&now-cached.at<120000){cb(cached.list);return;}
+    if(epgPending[key]){epgPending[key].push(cb);return;}
+    epgPending[key]=[cb];
+    request(epgUrl(item),function(err,result){
+      if(!epgPending[key])return;
+      var subscribers=epgPending[key];delete epgPending[key];
+      var list=!err&&result&&result.epg_listings instanceof Array?result.epg_listings:[];
+      list=list.filter(function(e){return e&&typeof e==="object";}).slice(0,8);
+      epgCache[key]={list:list,at:Date.now()};
+      epgCacheOrder.push(key);
+      if(epgCacheOrder.length>120){var remove=epgCacheOrder.shift();delete epgCache[remove];}
+      for(var i=0;i<subscribers.length;i++)subscribers[i](list);
+    });
+  }
+  function guideCurrentNext(entries){
+    var now=Date.now(),current=null,next=null,ordered=entries.slice();
+    ordered.sort(function(a,b){
+      var aStart=epgTime(a,"start"),bStart=epgTime(b,"start");
+      return (aStart?aStart.getTime():0)-(bStart?bStart.getTime():0);
+    });
+    for(var i=0;i<ordered.length;i++){
+      var entry=ordered[i],start=epgTime(entry,"start"),end=epgTime(entry,"stop");
+      if(!end)end=epgTime(entry,"end");
+      if(entry.now_playing===1||entry.now_playing==="1"||(start&&end&&start.getTime()<=now&&end.getTime()>now)){
+        current=entry;
+        if(i+1<ordered.length)next=ordered[i+1];
+        break;
+      }
+    }
+    if(!current&&ordered.length){
+      current=ordered[0];
+      if(ordered.length>1)next=ordered[1];
+    }
+    return {current:current,next:next};
+  }
+  function epgProgramCard(item,kind){
+    if(!item)return '<div class="guide-program '+kind+'"><span class="guide-program-status">'+(kind==="now"?"EN VIVO":"A CONTINUACIÓN")+'</span><h3>Sin información</h3><div class="guide-description">Esta señal no tiene datos de programación disponibles.</div></div>';
+    var title=epgText(item.title)||"Programa sin título",desc=epgText(item.description)||"";
+    var start=epgTime(item,"start"),end=epgTime(item,"stop");if(!end)end=epgTime(item,"end");
+    var now=Date.now(),progress=0;
+    if(start&&end&&end.getTime()>start.getTime()){
+      progress=Math.max(0,Math.min(100,(now-start.getTime())/(end.getTime()-start.getTime())*100));
+    }
+    return '<div class="guide-program '+kind+(guideColumn===(kind==="now"?0:1)?" selected":"")+'">'+
+      '<span class="guide-program-status">'+(kind==="now"?"● EN VIVO":"SIGUIENTE")+'</span>'+
+      '<h3>'+safe(title)+'</h3><div class="guide-time">'+epgClock(start)+' – '+epgClock(end)+'</div>'+
+      '<div class="guide-description">'+safe(desc.slice(0,160))+'</div>'+
+      (kind==="now"?'<div class="guide-progress"><div class="guide-progress-fill" style="width:'+Math.round(progress)+'%"></div></div>':"")+
+      '</div>';
+  }
+  function renderGuidePrograms(entries,channel){
+    if(!guideOpen||!channel)return;
+    var area=$("guide-programs"),guide=$("guide-channel-label");
+    guide.textContent=channel.name||"";
+    if(!entries||!entries.length){
+      area.innerHTML='<div class="guide-no-epg">No hay programación disponible para este canal. Puedes verlo en vivo presionando OK.</div>';
+      return;
+    }
+    var parsed=guideCurrentNext(entries);
+    area.innerHTML=epgProgramCard(parsed.current,"now")+epgProgramCard(parsed.next,"next");
+  }
+  function renderGuide(){
+    if(!guideOpen||!state.playlist.length)return;
+    var total=state.playlist.length;
+    guideIndex=(guideIndex+total)%total;
+    $("guide-channel-count").textContent=(guideIndex+1)+" / "+total;
+    var from=Math.max(0,Math.min(total-7,guideIndex-3));
+    if(from<0)from=0;
+    var to=Math.min(total,from+7),html="";
+    for(var i=from;i<to;i++){
+      var it=state.playlist[i],pictureUrl=picture(it,"live"),isCurrent=i===guideIndex;
+      html+='<button class="guide-row focusable'+(isCurrent?' selected':'')+'" type="button" data-guide-index="'+i+'">'+
+        '<span class="guide-ch-number">'+safe(it.num||i+1)+'</span>'+
+        '<span class="guide-channel-icon">'+(/^https?:\/\//i.test(pictureUrl)?'<img src="'+safe(pictureUrl)+'" alt=""/>':'▣')+'</span>'+
+        '<span class="guide-channel-text"><strong>'+safe(it.name)+'</strong><small>'+((state.playing&&String(state.playing.item.stream_id)===String(it.stream_id))?'● EN VIVO':'OK para ver')+'</small></span></button>';
+    }
+    $("guide-rail").innerHTML=html;
+    var btns=$("guide-rail").querySelectorAll("[data-guide-index]");
+    for(var j=0;j<btns.length;j++){
+      btns[j].onclick=function(){
+        guideIndex=Number(this.getAttribute("data-guide-index"));
+        tuneGuideChannel();
+      };
+      var imgs=btns[j].querySelectorAll("img");
+      for(var z=0;z<imgs.length;z++)imgs[z].onerror=function(){this.style.display="none";};
+    }
+    var selected=$("guide-rail").querySelector(".guide-row.selected");
+    if(selected)selected.focus();
+    var item=state.playlist[guideIndex],ticket=++guideToken;
+    $("guide-channel-label").textContent=item.name||"";
+    $("guide-programs").innerHTML='<div class="guide-no-epg">Consultando la programación…</div>';
+    $("guide-favorites").textContent=isFav("live",item)?"★ Quitar favorito":"☆ Añadir favorito";
+    loadEpg(item,function(list){
+      if(!guideOpen||ticket!==guideToken||!state.playlist[guideIndex]||String(state.playlist[guideIndex].stream_id)!==String(item.stream_id))return;
+      renderGuidePrograms(list,item);
+    });
+  }
+  function showGuide(){
+    if(!state.playing||state.playing.type!=="live"||!state.playlist.length)return;
+    clearTimeout(overlayTimer);
+    hideZapCard();
+    guideOpen=true;guideIndex=state.playlistIndex;guideColumn=0;
+    $("live-guide").className="live-guide";
+    $("player-top").style.display="none";
+    $("player-bottom").style.display="none";
+    renderGuide();
+  }
+  function closeGuide(quiet){
+    if(!guideOpen)return;
+    guideOpen=false;guideToken++;
+    $("live-guide").className="live-guide hidden";
+    if(!quiet&&state.playing){
+      showOverlay();
+      $("player-guide").focus();
+    }
+  }
+  function tuneGuideChannel(){
+    if(!guideOpen||!state.playlist[guideIndex])return;
+    var chosen=state.playlist[guideIndex],already=state.playing&&String(state.playing.item.stream_id)===String(chosen.stream_id);
+    state.playlistIndex=guideIndex;
+    closeGuide(true);
+    if(already){showOverlay();return;}
+    showZapCard(chosen,"Cambiando de canal…");
+    play("live",chosen);
+  }
+  function guideMove(step){
+    if(!guideOpen)return;
+    guideIndex+=step;renderGuide();
+  }
+  function guideSwitchColumn(step){
+    if(!guideOpen)return;
+    guideColumn=Math.max(0,Math.min(1,guideColumn+step));
+    var current=epgCache[String(state.playlist[guideIndex].stream_id)];
+    if(current)renderGuidePrograms(current.list,state.playlist[guideIndex]);
   }
   function prettyLanguage(code){
     var lang=String(code||"").toLowerCase().replace(/_/g,"-").split("-")[0];
