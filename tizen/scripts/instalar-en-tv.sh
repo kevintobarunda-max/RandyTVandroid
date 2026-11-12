@@ -260,6 +260,7 @@ if grep -Eiq 'Can not transfer .*package|problem to transfer package|Transfer.*f
   else
     echo "La orden directa no confirmó expresamente el resultado."
     echo "Comprueba en Apps si aparece RandyTV; no lo consideramos instalado todavía."
+    exit 1
   fi
   exit 0
 fi
