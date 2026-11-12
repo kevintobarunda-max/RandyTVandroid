@@ -309,6 +309,7 @@
     $("player-prev").className=type==="live"?"focusable":"focusable hidden";
     $("player-next").className=type==="live"?"focusable":"focusable hidden";
     $("player-fav").className=type==="series"?"focusable hidden":"focusable";
+    $("player-guide").className=type==="live"?"focusable guide-action":"focusable guide-action hidden";
     $("player-pause").textContent="❚❚ Pausa";
     $("player-loading").className="player-loading";
     $("track-panel").className="track-panel hidden";
