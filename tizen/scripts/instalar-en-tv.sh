@@ -191,8 +191,10 @@ tizen install -s "$SERIAL" -n "$(basename "$WGT")" -- "$(dirname "$WGT")" 2>&1 |
 INSTALL_RC=${PIPESTATUS[0]}
 set -e
 if [[ "$INSTALL_RC" -ne 0 ]] || grep -Eiq 'Failed to install Tizen application|install failed' "$INSTALL_LOG"; then
-  echo "✗ Tizen recibió el .wgt pero rechazó instalar Randy TV."
-  echo "Comprueba el perfil Samsung TV y el DUID. Prueba primero:"
+  echo "✗ El televisor recibió Randy TV, pero rechazó instalar el paquete."
+  echo "Si RandyPrueba se instaló correctamente con el mismo perfil,"
+  echo "el certificado ya está validado: revisa manifiesto y compatibilidad del paquete."
+  echo "Para comprobarlo, puedes repetir la prueba mínima:"
   echo "  bash tizen/scripts/diagnosticar-instalacion.sh $TV_IP $PROFILE"
   rm -f "$INSTALL_LOG"
   exit 1
