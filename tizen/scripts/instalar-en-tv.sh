@@ -132,28 +132,51 @@ if [[ -z "$WGT" ]]; then
   exit 1
 fi
 
-# Validar firmas reales: algunos empaquetadores devuelven éxito aunque
-# falten certificados y el .wgt luego sea rechazado por el televisor.
-if ! command -v unzip >/dev/null 2>&1; then
-  echo "Error: falta 'unzip' para verificar el contenido del paquete."
-  exit 1
+# Confirmar el contenido real del ZIP en vez de grep -q con pipefail.
+# Las firmas deben estar en la raíz del .wgt.
+verificar_firmas() {
+  python3 - "$1" <<'PY'
+import os, sys, zipfile
+wgt = sys.argv[1]
+try:
+    with zipfile.ZipFile(wgt) as z:
+        names = set(z.namelist())
+        for signature in ("author-signature.xml", "signature1.xml"):
+            print(("✓" if signature in names else "✗") + " " + signature)
+        if "author-signature.xml" not in names or "signature1.xml" not in names:
+            print("Contenido del paquete (solo nombres de archivos; sin credenciales):")
+            for name in sorted(names):
+                print(" - " + name)
+            sys.exit(1)
+except (OSError, zipfile.BadZipFile) as exc:
+    print("ERROR: archivo .wgt inválido:", exc)
+    sys.exit(2)
+PY
+}
+
+echo "Comprobando las firmas reales dentro de $(basename "$WGT")..."
+if ! verificar_firmas "$WGT"; then
+  echo "El .wgt no tiene ambas firmas en la raíz."
+  echo "Intentando volver a firmar el archivo .wgt mediante Tizen CLI..."
+  # La documentación de Tizen permite re-firmar un .wgt ya empaquetado.
+  if ! tizen package -t wgt -s "$PROFILE" -- "$WGT"; then
+    echo "ERROR: falló la firma de este .wgt con el perfil $PROFILE."
+    exit 1
+  fi
+  # Algunos SDK generan un segundo WGT; localizar la ruta de salida.
+  if [[ ! -f "$WGT" ]]; then
+    echo "ERROR: no encuentro el archivo .wgt después de firmar."
+    exit 1
+  fi
+  echo "Verificando nuevamente el contenido real..."
+  if ! verificar_firmas "$WGT"; then
+    echo "ERROR: el SDK sigue generando un paquete sin firmas válidas."
+    echo "El perfil se ha usado antes correctamente con RandyPrueba."
+    echo "No es necesario crear otro certificado. Comparar ahora config.xml."
+    exit 1
+  fi
 fi
-echo "Comprobando firmas dentro de $(basename "$WGT")..."
-if ! unzip -Z -1 "$WGT" | grep -Fxq "author-signature.xml"; then
-  echo "ERROR DE FIRMA: falta author-signature.xml dentro del .wgt."
-  echo "Tizen no encontró o no pudo usar el certificado de autor."
-  echo "Revisa: tizen security-profiles list -n '$PROFILE'"
-  echo "Y el archivo de perfiles: tizen cli-config -l"
-  echo "Crea un certificado Samsung TV real y asociado al DUID del televisor."
-  exit 1
-fi
-if ! unzip -Z -1 "$WGT" | grep -Fxq "signature1.xml"; then
-  echo "ERROR DE FIRMA: falta signature1.xml dentro del .wgt."
-  echo "Revisa el certificado distribuidor Samsung TV y el DUID del televisor."
-  echo "Consulta: tizen security-profiles list -n '$PROFILE'"
-  exit 1
-fi
-echo "✓ Firmas de autor y distribuidor presentes en el paquete."
+echo "✓ Archivo .wgt firmado y comprobado."
 
 echo "3/4 Conectando a Samsung en $TV_IP"
 sdb connect "$TV_IP"
