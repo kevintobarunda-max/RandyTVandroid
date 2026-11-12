@@ -2,6 +2,29 @@
 
 Aplicación **web nativa de Tizen TV** independiente del código Android de este repositorio. No es posible convertir directamente el APK de Android a un paquete Samsung \`.wgt\`. La versión Tizen vive en \`tizen/\`, sin reemplazar la app original.
 
+## Rediseño Samsung 1.1.0 — interfaz minimalista y fluida
+
+- **Barra lateral fija** con Inicio, TV en vivo, Películas, Series, Favoritos y Ajustes.
+- **Inicio tipo centro multimedia** con portada editorial, accesos rápidos, canales en vivo y **Continuar viendo** para películas y capítulos.
+- **Diseño oscuro** con contraste alto, foco verde claro para las flechas/OK del mando, tipografía grande y mucho espacio entre los elementos.
+- **Tarjetas adaptadas al contenido**: canales con logo horizontal y películas/series con portada vertical.
+- **Búsqueda y categorías** con foco preservado después de recargas asíncronas de catálogos.
+- **Carga diferida de imágenes** con IntersectionObserver si está disponible; máximo 48 resultados por lote.
+- **Reproductor limpio** con controles temporales, indicador EN VIVO, numeración de canales, zapping y el perrito de carga.
+- **Sin fuentes externas, frameworks, blur ni vídeos de fondo**; transiciones de fondo y foco de 140 ms y opción de reducir movimiento.
+- Compatible en principio con el motor web de Tizen del Samsung UN55TU8200GXZS (2020), **pendiente de instalación y prueba física tras la última revisión**.
+
+### Actualizar en el Mac y volver a instalar
+
+~~~bash
+cd ~/Downloads/RandyTVandroid
+git switch feat/tizen-senior-friendly
+git pull --ff-only
+bash tizen/scripts/instalar-en-tv.sh 192.168.0.14 RANDYTVPRO
+~~~
+
+Los accesos precargados permanecen en \`tizen/js/local-config.js\`, que se genera **solo en el Mac**, está ignorado por Git y no se publica en el repositorio. No publiques ni compartas el \`.wgt\` ya que contiene esas credenciales.
+
 ## Funciones incluidas (primera versión)
 - Pantalla principal con **4 accesos grandes**, sin menús ocultos: TV, favoritos, películas, series.
 - Navegación con **flechas, OK y Volver** del control Samsung, foco visible de alto contraste.
