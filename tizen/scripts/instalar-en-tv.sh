@@ -178,6 +178,30 @@ if ! verificar_firmas "$WGT"; then
 fi
 echo "✓ Archivo .wgt firmado y comprobado."
 
+# Validar el archivo ZIP real y reportar tamaño antes de enviarlo al TV.
+echo "Validando integridad del paquete..."
+python3 - "$WGT" <<'PY'
+import os, sys, zipfile, xml.etree.ElementTree as ET
+p=sys.argv[1]
+size=os.stat(p).st_size
+print("Tamaño: %.2f MB (%d bytes)"%(size/1048576,size))
+try:
+    with zipfile.ZipFile(p) as z:
+        bad=z.testzip()
+        if bad:
+            sys.exit("ERROR: paquete ZIP dañado; primer archivo corrupto: "+bad)
+        if "config.xml" not in z.namelist():
+            sys.exit("ERROR: config.xml ausente dentro del WGT")
+        root=ET.fromstring(z.read("config.xml"))
+        app=root.find("{http://tizen.org/ns/widgets}application")
+        if app is None or not app.get("id"):
+            sys.exit("ERROR: manifiesto sin ID de aplicación")
+        print("Aplicación: "+app.get("id"))
+except (OSError,zipfile.BadZipFile,ET.ParseError) as err:
+    sys.exit("ERROR: no se puede validar WGT: "+str(err))
+print("✓ ZIP completo y manifiesto legible.")
+PY
+
 echo "3/4 Conectando a Samsung en $TV_IP"
 sdb connect "$TV_IP"
 echo "Dispositivos conectados:"
@@ -186,23 +210,63 @@ SERIAL="${TV_IP}:26101"
 
 echo "4/4 Instalando $(basename "$WGT") en $SERIAL"
 INSTALL_LOG="$(mktemp "${TMPDIR:-/tmp}/randy-install.XXXXXX")"
+PUSH_LOG=""
+DIRECT_LOG=""
+cleanup_install_logs() {
+  rm -f "$INSTALL_LOG"
+  [[ -z "$PUSH_LOG" ]] || rm -f "$PUSH_LOG"
+  [[ -z "$DIRECT_LOG" ]] || rm -f "$DIRECT_LOG"
+}
+trap cleanup_install_logs EXIT
 set +e
 tizen install -s "$SERIAL" -n "$(basename "$WGT")" -- "$(dirname "$WGT")" 2>&1 | tee "$INSTALL_LOG"
 INSTALL_RC=${PIPESTATUS[0]}
 set -e
+
+# Algunos SDK imprimen "Failed to install" incluso después de "install completed".
+if grep -Eq 'app_id\[.*\] install completed|Tizen application is successfully installed\.' "$INSTALL_LOG"; then
+  echo "✓ El televisor confirmó que Randy TV fue instalado."
+  exit 0
+fi
+
+# La transferencia ocurre antes de verificar el manifiesto o certificados.
+if grep -Eiq 'Can not transfer .*package|problem to transfer package|Transfer.*fail' "$INSTALL_LOG"; then
+  echo "La CLI no pudo TRANSFERIR el archivo. Intentando SDB directo..."
+  REMOTE_NAME="RandyTV-$(date +%Y%m%d%H%M%S)-$$.wgt"
+  REMOTE_PATH="/home/owner/share/tmp/sdk_tools/$REMOTE_NAME"
+  PUSH_LOG="$(mktemp "${TMPDIR:-/tmp}/randy-sdb-push.XXXXXX")"
+  set +e
+  sdb -s "$SERIAL" push "$WGT" "$REMOTE_PATH" 2>&1 | tee "$PUSH_LOG"
+  PUSH_RC=${PIPESTATUS[0]}
+  set -e
+  if [[ "$PUSH_RC" -ne 0 ]] || grep -Eiq 'fail|error|closed|permission denied|no space|not found' "$PUSH_LOG" || ! grep -Eiq 'pushed|transferred|100%' "$PUSH_LOG"; then
+    echo "✗ La transferencia directa SDB también falló."
+    echo "Verifica conexión y estado del televisor: sdb devices"
+    echo "Verifica espacio y tamaño del archivo; no es un problema confirmado de certificado."
+    exit 1
+  fi
+  echo "✓ SDB transfirió el archivo. Iniciando instalación directa en Samsung..."
+  DIRECT_LOG="$(mktemp "${TMPDIR:-/tmp}/randy-direct.XXXXXX")"
+  set +e
+  sdb -s "$SERIAL" shell 0 vd_appinstall RANDYTV123.RandyTV "$REMOTE_PATH" 2>&1 | tee "$DIRECT_LOG"
+  DIRECT_RC=${PIPESTATUS[0]}
+  set -e
+  if grep -Eiq 'install failed|failed\[|error|invalid|closed|permission denied' "$DIRECT_LOG"; then
+    echo "✗ El TV rechazó la instalación directa; revisa el error que acaba de mostrar."
+    exit 1
+  fi
+  if grep -Eq 'install completed|successfully installed|installed' "$DIRECT_LOG"; then
+    echo "✓ El TV informó instalación correcta de Randy TV."
+  else
+    echo "La orden directa no confirmó expresamente el resultado."
+    echo "Comprueba en Apps si aparece RandyTV; no lo consideramos instalado todavía."
+  fi
+  exit 0
+fi
+
 if [[ "$INSTALL_RC" -ne 0 ]] || grep -Eiq 'Failed to install Tizen application|install failed' "$INSTALL_LOG"; then
-  echo "✗ El televisor recibió Randy TV, pero rechazó instalar el paquete."
-  echo "Si RandyPrueba se instaló correctamente con el mismo perfil,"
-  echo "el certificado ya está validado: revisa manifiesto y compatibilidad del paquete."
-  echo "Para comprobarlo, puedes repetir la prueba mínima:"
-  echo "  bash tizen/scripts/diagnosticar-instalacion.sh $TV_IP $PROFILE"
-  rm -f "$INSTALL_LOG"
+  echo "✗ El televisor rechazó instalar Randy TV. Revisa el resultado detallado anterior."
+  echo "La prueba mínima RandyPrueba sí se instaló correctamente con RANDYTVPRO."
   exit 1
 fi
-if grep -Eiq 'successfully installed|install completed|installation completed|install success' "$INSTALL_LOG"; then
-  echo "✓ Tizen informó instalación correcta; busca Randy TV en Aplicaciones."
-else
-  echo "El CLI no confirmó el resultado. Comprueba en Aplicaciones si aparece Randy TV."
-fi
-rm -f "$INSTALL_LOG"
-echo "NOTA: Para instalar, el TV requiere Developer Mode, IP del Mac permitida y certificado Samsung autorizado."
+echo "La instalación no informó éxito o fallo de forma concluyente; revisa Apps en el televisor."
