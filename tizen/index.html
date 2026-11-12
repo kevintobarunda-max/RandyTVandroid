@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"/>
+  <meta name="theme-color" content="#090d14"/>
+  <title>Randy TV · Samsung</title>
+  <link rel="stylesheet" href="css/app.css"/>
+  <script type="text/javascript" src="$WEBAPIS/webapis/webapis.js"></script>
+</head>
+<body>
+  <div id="app">
+    <section id="setup" class="view" aria-label="Configurar Randy TV">
+      <div class="login-shell">
+        <div class="login-intro">
+          <div class="brand brand-intro"><span class="brand-mark">R</span><span class="brand-text"><strong>RANDY<span>TV</span></strong><small>Tu entretenimiento, a tu ritmo.</small></span></div>
+          <div class="intro-orbit" aria-hidden="true"><span class="intro-orbit-inner">R</span></div>
+          <span class="eyebrow">EDICIÓN SAMSUNG TV</span>
+          <h1>Todo lo que te gusta.<br/><em>En un solo lugar.</em></h1>
+          <p>Una experiencia rápida, clara y cómoda, diseñada para disfrutar desde el sofá.</p>
+          <div class="intro-points"><span>TV en vivo</span><span>Películas</span><span>Series</span></div>
+        </div>
+        <div class="setup-panel">
+          <span class="eyebrow">CONFIGURACIÓN INICIAL</span>
+          <h2>Comienza a disfrutar</h2>
+          <p class="lead">Conecta tu servicio una vez. Después, solo necesitarás las flechas y OK de tu control.</p>
+          <form id="login-form" novalidate>
+            <label for="server">Dirección del servidor</label>
+            <input id="server" class="focusable" type="url" placeholder="http://servidor:8080" autocomplete="off" required/>
+            <label for="username">Usuario</label>
+            <input id="username" class="focusable" type="text" placeholder="Tu usuario" autocomplete="off" required/>
+            <label for="password">Contraseña</label>
+            <input id="password" class="focusable" type="password" placeholder="Tu contraseña" autocomplete="off" required/>
+            <label class="check-row"><input id="remember" class="focusable" type="checkbox" checked/><span>Recordar acceso en este televisor</span></label>
+            <p class="privacy-note">Esta opción guarda tus datos localmente. Evítala en televisores compartidos.</p>
+            <button class="primary big-button focusable" id="connect" type="submit">Entrar a Randy TV <span aria-hidden="true">→</span></button>
+          </form>
+          <p id="login-error" class="error" role="alert"></p>
+        </div>
+      </div>
+    </section>
+
+    <section id="main" class="view hidden" aria-label="Randy TV">
+      <aside class="sidebar" aria-label="Navegación principal">
+        <button class="logo-button focusable" id="go-home" type="button" aria-label="Ir a inicio">
+          <span class="brand-mark small">R</span>
+          <span class="sidebar-logo">RANDY<span>TV</span><small>EDICIÓN SAMSUNG</small></span>
+        </button>
+        <div class="nav-caption">EXPLORAR</div>
+        <nav id="main-tabs" aria-label="Secciones">
+          <button class="tab focusable" data-nav="home" type="button"><span class="nav-icon" aria-hidden="true">⌂</span><span>Inicio</span></button>
+          <button class="tab focusable" data-nav="live" type="button"><span class="nav-icon" aria-hidden="true">▣</span><span>TV en vivo</span></button>
+          <button class="tab focusable" data-nav="vod" type="button"><span class="nav-icon" aria-hidden="true">▶</span><span>Películas</span></button>
+          <button class="tab focusable" data-nav="series" type="button"><span class="nav-icon" aria-hidden="true">▤</span><span>Series</span></button>
+          <button class="tab focusable" data-nav="favorites" type="button"><span class="nav-icon" aria-hidden="true">☆</span><span>Favoritos</span></button>
+        </nav>
+        <div class="sidebar-bottom">
+          <button id="settings-button" class="tab settings-tab focusable" type="button"><span class="nav-icon" aria-hidden="true">⚙</span><span>Ajustes</span></button>
+          <div class="sidebar-footer">RANDY TV <span>·</span> SMART TV</div>
+        </div>
+      </aside>
+
+      <div class="workspace">
+        <header class="topbar">
+          <div><div class="top-eyebrow">ENTRETENIMIENTO SIN COMPLICACIONES</div><div class="top-title" id="top-title">Inicio</div></div>
+          <div class="topbar-right">
+            <span class="connection-indicator"><i aria-hidden="true"></i> Tu biblioteca</span>
+            <span id="clock-display" class="clock-display" aria-label="Hora actual"></span>
+          </div>
+        </header>
+        <main id="content" tabindex="-1" aria-live="off"></main>
+        <footer class="helpbar"><span><b>↑ ↓ ← →</b> Navegar</span><span><b>OK</b> Seleccionar</span><span><b>↩</b> Volver</span><span><b>CH +/−</b> Cambiar canal</span></footer>
+      </div>
+    </section>
+
+    <section id="player" class="view hidden" aria-label="Reproducción">
+      <object id="av-player" type="application/avplayer"></object>
+      <video id="html-player" playsinline></video>
+      <div id="player-loading" class="player-loading"><span class="paw">🐾</span><strong>Preparando tu entretenimiento…</strong></div>
+      <div id="player-top" class="player-top">
+        <div class="channel-info"><small>RANDY TV <span class="header-separator">/</span> AHORA REPRODUCIENDO</small><strong id="player-title">Televisión</strong><small id="player-status">Disfruta tu contenido</small></div>
+        <div class="live-pill" id="live-pill">● EN VIVO</div>
+      </div>
+      <div id="player-bottom" class="player-bottom">
+        <div id="playback-progress" class="progress-track"><div id="progress-fill"></div></div>
+        <div id="time-info" class="time-info"></div>
+        <div class="player-actions">
+          <button id="player-back" class="focusable" type="button">← Volver</button>
+          <button id="player-prev" class="focusable" type="button">❮ Anterior</button>
+          <button id="player-pause" class="focusable" type="button">❚❚ Pausa</button>
+          <button id="player-next" class="focusable" type="button">Siguiente ❯</button>
+          <button id="player-fav" class="focusable" type="button">☆ Favorito</button>
+          <button id="player-guide" class="focusable guide-action" type="button">▤ Guía TV</button>
+          <button id="player-audio" class="focusable track-action" type="button">♫ Audio</button>
+          <button id="player-subtitles" class="focusable track-action" type="button">CC Subtítulos</button>
+        </div>
+        <div id="player-help" class="player-help">CH +/− cambiar canal <span>·</span> OK abrir guía <span>·</span> Botones Audio y CC para pistas</div>
+      </div>
+      <div id="zap-card" class="zap-card hidden" role="status" aria-live="off">
+        <span class="zap-accent"></span>
+        <div id="zap-logo" class="zap-logo" aria-hidden="true">▣</div>
+        <div class="zap-copy">
+          <div class="zap-eyebrow">CAMBIANDO DE CANAL <span id="zap-position"></span></div>
+          <div class="zap-main"><span id="zap-number" class="zap-number"></span><strong id="zap-title">Canal</strong></div>
+          <div id="zap-status" class="zap-status">Conectando con la señal…</div>
+        </div>
+        <div class="zap-remote">▲<br/>▼</div>
+      </div>
+      <section id="live-guide" class="live-guide hidden" aria-label="Guía de canales" role="dialog" aria-modal="true">
+        <div class="guide-header">
+          <div><span class="guide-overline">RANDY TV <span>·</span> GUÍA EN VIVO</span><h2>Descubre qué ver</h2></div>
+          <div class="guide-live-indicator"><span class="guide-live-dot"></span> TV EN VIVO</div>
+        </div>
+        <div class="guide-body">
+          <div class="guide-channels">
+            <div class="guide-subhead">CANALES <span id="guide-channel-count"></span></div>
+            <div id="guide-rail" class="guide-rail" aria-label="Selecciona un canal"></div>
+          </div>
+          <div class="guide-shows">
+            <div class="guide-subhead">PROGRAMACIÓN <span id="guide-channel-label"></span></div>
+            <div id="guide-programs" class="guide-programs">
+              <div class="guide-no-epg">Selecciona un canal para consultar su programación.</div>
+            </div>
+            <div class="guide-hint">▲ ▼ Explorar canales <span>·</span> ◀ ▶ Revisar programación <span>·</span> OK Ver canal</div>
+          </div>
+        </div>
+        <div class="guide-toolbar">
+          <button id="guide-close" class="focusable" type="button">✕ Cerrar</button>
+          <button id="guide-audio" class="focusable" type="button">♫ Audio</button>
+          <button id="guide-subtitles" class="focusable" type="button">CC Subtítulos</button>
+          <button id="guide-favorites" class="focusable" type="button">☆ Favorito</button>
+        </div>
+      </section>
+      <div id="track-panel" class="track-panel hidden" role="dialog" aria-modal="true" aria-label="Selección de audio y subtítulos">
+        <div class="track-panel-head">
+          <span class="eyebrow">RANDY TV · REPRODUCTOR</span>
+          <div class="track-panel-top"><h2 id="track-title">Pistas de audio</h2><button id="track-close" class="track-close focusable" type="button">✕ Cerrar</button></div>
+          <p id="track-description">Elige una pista disponible en esta señal.</p>
+        </div>
+        <div id="track-options" class="track-options" aria-live="polite"></div>
+        <p class="track-help">Usa ▲ ▼ y OK para seleccionar · ↩ para volver</p>
+      </div>
+      <div id="number-bubble" class="number-bubble hidden"></div>
+    </section>
+    <div id="toast" role="status" class="toast hidden"></div>
+  </div>
+  <!-- Se genera localmente en el Mac y nunca debe subirse a GitHub. -->
+  <script src="js/local-config.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

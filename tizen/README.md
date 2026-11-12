@@ -1,0 +1,290 @@
+# Randy TV para Samsung Tizen (TV) — versión de uso sencillo
+## Randy TV Samsung 1.2.0: guía inspirada en Zapping
+
+Rediseño visual de la navegación de canales, **sin usar marcas ni materiales privados de Zapping**:
+
+- TV en vivo: cuadrícula de logos provenientes del proveedor, número de canal y foco resaltado.
+- Dentro de la reproducción, **OK** abre una guía superpuesta al video con riel vertical de canales, programa **Ahora**, **Siguiente**, horarios y progreso cuando el proveedor ofrece EPG.
+- **▲/▼** en la guía explora otros canales sin interrumpir lo que estás viendo; **◀/▶** cambia entre las tarjetas de programación; **OK** sintoniza el canal destacado.
+- Fuera de la guía, **CH+/CH−** y **▲/▼** siguen haciendo zapping directo con una tarjeta inmediata; el video empieza cuando el servidor y el decodificador terminan de preparar la señal.
+- Desde la guía se accede a audio, subtítulos y favoritos. Durante la reproducción, botón verde Samsung abre audio y botón amarillo abre subtítulos (si están presentes en el control).
+- EPG: consulta asíncrona Xtream `get_short_epg` para el canal seleccionado, con caché de dos minutos y mensajes cuando no hay programación. No se inventan horarios.
+- Carga limitada: guía con 5–7 canales visibles y catálogo en lotes de 48; sin blur, frameworks ni vídeos de fondo para más fluidez.
+- **No hay replay de programas**: requiere soporte y permisos específicos del proveedor.
+- Código revisado estáticamente. La **instalación y reproducción real en Samsung aún deben probarse**.
+
+### Actualizar e instalar en Samsung
+
+```bash
+cd ~/Downloads/RandyTVandroid
+git switch feat/tizen-senior-friendly
+git pull --ff-only
+bash tizen/scripts/instalar-en-tv.sh 192.168.0.14 RANDYTVPRO
+```
+
+El script comprueba firma e integridad y prueba transferencia SDB alternativa si la primera falla. El éxito debe confirmarlo el televisor. Las credenciales locales no se suben al repositorio.
+
+
+Aplicación **web nativa de Tizen TV** independiente del código Android de este repositorio. No es posible convertir directamente el APK de Android a un paquete Samsung \`.wgt\`. La versión Tizen vive en \`tizen/\`, sin reemplazar la app original.
+
+## Rediseño Samsung 1.1.0 — interfaz minimalista y fluida
+
+- **Barra lateral fija** con Inicio, TV en vivo, Películas, Series, Favoritos y Ajustes.
+- **Inicio tipo centro multimedia** con portada editorial, accesos rápidos, canales en vivo y **Continuar viendo** para películas y capítulos.
+- **Diseño oscuro** con contraste alto, foco verde claro para las flechas/OK del mando, tipografía grande y mucho espacio entre los elementos.
+- **Tarjetas adaptadas al contenido**: canales con logo horizontal y películas/series con portada vertical.
+- **Búsqueda y categorías** con foco preservado después de recargas asíncronas de catálogos.
+- **Carga diferida de imágenes** con IntersectionObserver si está disponible; máximo 48 resultados por lote.
+- **Reproductor limpio** con controles temporales, indicador EN VIVO, numeración de canales, zapping y el perrito de carga.
+- **Sin fuentes externas, frameworks, blur ni vídeos de fondo**; transiciones de fondo y foco de 140 ms y opción de reducir movimiento.
+- Compatible en principio con el motor web de Tizen del Samsung UN55TU8200GXZS (2020), **pendiente de instalación y prueba física tras la última revisión**.
+
+### Actualizar en el Mac y volver a instalar
+
+~~~bash
+cd ~/Downloads/RandyTVandroid
+git switch feat/tizen-senior-friendly
+git pull --ff-only
+bash tizen/scripts/instalar-en-tv.sh 192.168.0.14 RANDYTVPRO
+~~~
+
+Los accesos precargados permanecen en \`tizen/js/local-config.js\`, que se genera **solo en el Mac**, está ignorado por Git y no se publica en el repositorio. No publiques ni compartas el \`.wgt\` ya que contiene esas credenciales.
+
+## Funciones incluidas (primera versión)
+- Pantalla principal con **4 accesos grandes**, sin menús ocultos: TV, favoritos, películas, series.
+- Navegación con **flechas, OK y Volver** del control Samsung, foco visible de alto contraste.
+- Canales en directo y acceso desde categorías, 24 horas, canales de señal ligera y Los Simpson.
+- Películas y series por categorías, temporadas y capítulos, con búsqueda y paginación de resultados (48 por lote).
+- Favoritos persistentes en el televisor, canal numérico y zapping con CH+/CH−.
+- Reproductor con **Samsung AVPlay**, pantalla completa, barra de reproducción y controles grandes; fallback a HTML5 en navegador común.
+- Recordatorio de progreso para películas y capítulos, con reanudación al volver a reproducir.
+- Estilo oscuro, ligero, imágenes diferidas y sin dependencias JS externas, fuentes web, blur o fondos de vídeo animados.
+- Configuración desde la pantalla, sin credenciales ni claves incluidas en el código.
+
+## Requisitos
+- Samsung Smart TV compatible con aplicaciones web Tizen, idealmente Tizen 3.0 o posterior (verificar en el dispositivo).
+- Tizen Studio con extensión **Samsung TV** y certificado Samsung válido para el televisor.
+- Un servicio propio/autorizado compatible con **Xtream Codes** que permita acceso a \`player_api.php\`.
+- Para TV en vivo se requiere **HLS (.m3u8)**. Para películas y series, códecs/contenedores compatibles con el modelo Samsung. El servicio puede limitar las señales disponibles.
+- En algunos servidores, las solicitudes \`XMLHttpRequest\` desde aplicaciones web se bloquean por **CORS**, HTTPS/HTTP, restricciones del servidor o red. Un servidor autorizado puede necesitar configurar cabeceras CORS o proxy propio; no se pueden eludir estas restricciones desde el televisor.
+- La app no ofrece ni suministra canales ni contenidos de terceros.
+
+## Instalar en un Samsung TV (modo desarrollador)
+1. Instala Tizen Studio desde el sitio oficial y agrega los paquetes de desarrollo **TV** y herramientas de certificados.
+2. En el televisor abre la pantalla **Apps**, activa el modo desarrollador y registra la IP del equipo de desarrollo. Los pasos concretos varían según modelo/firmware.
+3. Conecta el televisor por red usando Device Manager de Tizen Studio y verifica que se vea en la lista de dispositivos.
+4. En Tizen Studio crea/importa un proyecto **TV Web Application** desde la carpeta \`tizen/\` con \`config.xml\`.
+5. Firma el proyecto con un certificado de TV válido para ese equipo, luego usa **Run As → Tizen Web Application** o **Build Signed Package (.wgt)**.
+6. En la pantalla de inicio ingresa la URL completa de tu servidor, usuario y contraseña y selecciona **Conectar y ver televisión**. Elige si quieres recordar acceso localmente.
+
+**Importante:** los archivos fuente de este proyecto NO constituyen un paquete \`.wgt\` ya firmado. Se requiere una compilación y firma en Tizen Studio. No se ha probado aún en un Samsung físico.
+
+
+**Nota para Mac con compilador Tizen antiguo:** el instalador prepara directamente los recursos web (HTML, CSS y JavaScript) en `.buildResult` y luego utiliza el empaquetador y firmador oficial. Esto evita el fallo `javax/xml/bind/JAXBException` del paso `tizen build-web` sin requerir cambios en Java ni omitir la firma del `.wgt`.
+
+## Instalación con Terminal en Mac (credenciales precargadas)
+
+Descarga la rama Samsung Tizen:
+
+~~~bash
+cd ~/Downloads
+git clone -b feat/tizen-senior-friendly https://github.com/kevintobarunda-max/RandyTVandroid.git
+cd RandyTVandroid
+~~~
+
+Para **precargar las mismas credenciales que usa la aplicación Android** sin mostrarlas en Terminal ni añadirlas al repositorio:
+
+~~~bash
+python3 tizen/scripts/preparar-credenciales.py
+~~~
+
+Para ingresar datos nuevos (la contraseña no se muestra al escribirla):
+
+~~~bash
+python3 tizen/scripts/preparar-credenciales.py --nuevo
+~~~
+
+Este comando genera el archivo privado \`tizen/js/local-config.js\` excluido mediante \`.gitignore\`. Al abrir Randy TV, la app carga esos datos automáticamente y entra al catálogo, sin mostrar el formulario. **La contraseña NO está cifrada en el paquete firmado**: no compartas el archivo \`.wgt\`.
+
+Antes de instalar, debes: (a) instalar el **Tizen SDK con Samsung TV Extension** (por ejemplo, desde la extensión para Visual Studio Code), (b) activar Developer Mode y registrar la IP de tu Mac, (c) conectar el televisor en la misma red, y (d) crear un **certificado Samsung TV** válido en Certificate Manager con el identificador de ese TV.
+
+Con las herramientas CLI accesibles como \`tizen\` y \`sdb\` en tu \`PATH\`, ejecuta (sustituye ambos valores por los tuyos):
+
+~~~bash
+bash tizen/scripts/instalar-en-tv.sh 192.168.1.55 MiPerfilSamsung
+~~~
+
+El script compila, firma, conecta por SDB e instala el \`.wgt\`. También intentará detectar el SDK en rutas habituales de macOS. Si instalaste el SDK en otra ruta, añádela al PATH. Puedes examinar el televisor detectado con:
+
+~~~bash
+sdb connect 192.168.1.55
+sdb devices
+~~~
+
+Para hacerlo paso a paso, usa los comandos oficiales:
+
+~~~bash
+tizen build-web -- "$PWD/tizen"
+tizen package -t wgt -s MiPerfilSamsung -- "$PWD/tizen/.buildResult"
+sdb connect 192.168.1.55
+sdb devices
+# Sustituye SERIAL_TV por el primer campo que muestre sdb devices
+tizen install -s SERIAL_TV -n NOMBRE_DEL_ARCHIVO.wgt -- "$PWD/tizen/.buildResult"
+~~~
+
+Si \`sdb\` no conecta, comprueba que el modo desarrollador esté encendido, la IP del Mac autorizada y la red local permita comunicación con el televisor. Si la instalación falla por firma, verifica que el certificado Samsung TV corresponda al dispositivo.
+
+**Seguridad:** dado que el código Android de origen puede contener credenciales incrustadas, considera cambiarlas en tu proveedor antes de redistribuir un APK o compartir el código fuente. La nueva app Tizen no añade los secretos a GitHub.
+
+
+## Diagnóstico de error "Failed to install Tizen application"
+
+Si la instalación muestra `Warning: Not found tizen signature file` y `Warning: Not found tizen author signature file`, comprueba **si el archivo WGT tiene realmente ambas firmas**:
+
+~~~bash
+unzip -Z -1 "tizen/.buildResult/Randy TV.wgt" | grep -E '^(author-signature|signature1)\.xml
+
+| Tecla | Función |
+| --- | --- |
+| ▲ ▼ ◀ ▶ | Cambiar el elemento seleccionado en los menús |
+| OK / Enter | Abrir la opción enfocada o mostrar controles de reproducción |
+| Return / Back | Volver al listado, cerrar detalles o volver a Inicio |
+| CH+ / CH− | En reproducción de TV: canal siguiente / anterior |
+| Números | Durante TV: buscar canal por número \`num\` de la lista |
+| ◀ / ▶ durante película o serie | Retroceder / avanzar 15 segundos |
+| Play/Pause | Pausar o reanudar, si lo permite la señal |
+
+## Privacidad y protección
+- La app **no incluye credenciales por defecto**. Sólo emplea los datos ingresados por el propietario del televisor.
+- **Recordar acceso** almacena los datos en \`localStorage\` del TV, que no es un almacén cifrado de credenciales. Desactiva la casilla si es compartido.
+- Los favoritos y el historial se almacenan localmente.
+- Para cambiar las credenciales abre **Ajustes** y confirma. La app elimina las credenciales recordadas.
+- **No subas credenciales a GitHub**. Si una versión anterior tiene contraseñas embebidas, revócalas o cámbialas con el proveedor.
+
+## Arquitectura
+- \`config.xml\`: manifiesto Tizen, permisos de Internet y control remoto.
+- \`index.html\`: estructura accesible de configuración, Inicio, catálogo, detalles y reproductor.
+- \`css/app.css\`: interfaz grande y ligera para TV, compatible con motores de navegador antiguos.
+- \`js/app.js\`: catálogo Xtream, navegación, almacenamiento local, reproducción AVPlay/HTML5.
+
+## Pruebas pendientes en TV real
+- Confirmar instalación, certificado, tecla Return y registro de CH± en el modelo específico.
+- Comprobar autorización/CORS del API con el proveedor legítimo.
+- Validar códecs y contenedores en AVPlay; probar audio, HLS, buffering y cambio de canales.
+- Verificar rendimiento en Tizen antiguos (modelos 2017–2019), especialmente con catálogos muy grandes.
+- Revisar navegación al abrir el teclado virtual del TV.
+
+## Cambios intencionales respecto a RandyTVandroid
+El proyecto Android utiliza Kotlin/Jetpack Compose y ExoPlayer, mientras que Samsung exige app web empaquetada y reproducción basada en AVPlay. Se mantiene la estructura de categorías y contenidos de la API, pero se simplifica el diseño y la cantidad de elementos visibles para hacerlo más cómodo a personas mayores.
+
+tizen cli-config -l
+tizen security-profiles list
+tizen security-profiles list -n SamsungTV
+~~~
+
+Deben aparecer tanto `author-signature.xml` como `signature1.xml`. El nombre `SamsungTV` en el último comando es solo el ejemplo: debe coincidir con el perfil creado. **El instalador ahora detiene el proceso antes de instalar si falta una firma.**
+
+Si el perfil `SamsungTV` no existe o no aparece al listar perfiles, crea **Samsung → TV** (no un perfil genérico Tizen) desde Certificate Manager; el certificado de distribuidor debe incluir el **DUID** del televisor `UN55TU8200GXZS`, no su dirección IP. En Tizen Studio: Tools → Certificate Manager → + → Samsung → TV → autor → distribuidor → añadir el DUID del dispositivo conectado. En la extensión Tizen para VS Code: ACTIONS → Create Certificate → Create Samsung Certificate → seleccionar DUID → iniciar sesión Samsung.
+
+Si ya existe un `profiles.xml` de Samsung pero la CLI usa otro, configura **su ruta real**, sin copiar credenciales al proyecto:
+
+~~~bash
+tizen cli-config -l
+tizen cli-config -g "default.profiles.path=/RUTA/REAL/HASTA/profiles.xml"
+tizen security-profiles list
+~~~
+
+No publiques el XML ni los archivos `.p12`, no compartas sus contraseñas, y no subas el `.wgt` porque contiene la contraseña del servicio precargada.
+
+
+
+### Si el paquete está firmado pero Tizen rechaza la instalación
+
+Ejecuta esta prueba mínima desde la raíz del proyecto:
+
+~~~bash
+git pull --ff-only
+bash tizen/scripts/diagnosticar-instalacion.sh 192.168.0.14 RANDYTVPRO
+~~~
+
+Esta prueba genera una aplicación inocua llamada **RandyPrueba** (sin datos del servicio), la firma con el perfil seleccionado y pide instalarla en el TV.
+
+- Si **RandyPrueba falla**, el problema está fuera de Randy TV: revisa que tu perfil de Samsung TV realmente tenga un certificado **distribuidor Samsung TV** autorizado para el DUID del TV y que Developer Mode esté activo; las dos firmas dentro del archivo no demuestran que el televisor acepte la cadena del certificado.
+- Si **RandyPrueba se instala**, el certificado básico funciona y conviene revisar el `config.xml`, el contenido y la identidad del paquete principal Randy TV.
+
+Según las preguntas frecuentes oficiales de Samsung, los registros internos del TV **no se pueden recuperar mediante `sdb dlog`**. El diagnóstico es por comparación de instalación, no por lectura de logs internos.
+
+## Samsung UN55TU8200GXZS: prueba mínima instalada correctamente
+
+En este televisor, la prueba **RandyPrueba** se instaló con éxito usando el perfil **RANDYTVPRO** y conexión **192.168.0.14:26101**. Por tanto, en este equipo ya se verificaron la red, la firma y la instalación de una app TV mínima.
+
+La versión inicial de Randy TV fue rechazada con un mensaje genérico. La revisión posterior ajustó el `config.xml` para que tenga las mismas declaraciones esenciales que la prueba exitosa: `feature/screen.size.all`, `icon src="icon.png"` y nombre `RandyTV` sin espacios. El script crea el ícono en el directorio temporal de compilación y valida manifiesto e imagen antes de firmar. Este cambio está **pendiente de prueba en el TV físico**.
+
+Reintentar desde la raíz local del proyecto (el `local-config.js` generado y las credenciales privadas no se borran con `git pull`):
+
+~~~bash
+git pull --ff-only
+bash tizen/scripts/instalar-en-tv.sh 192.168.0.14 RANDYTVPRO
+~~~
+
+Si vuelve a fallar, **no regenerar certificados ni credenciales**. El siguiente diagnóstico es aislar el manifiesto con el mismo contenido de la app, o revisar el mensaje de error detallado del instalador para esa versión de Tizen.
+
+### Reconexión automática cuando SDB pierde el serial
+
+Si durante la instalación se ve `Can not transfer ... package` y luego el envío alternativo indica `target not found` o `serial number ... wrong`, el servidor SDB del Mac puede haberse reiniciado, perdiendo la conexión TCP con el televisor.
+
+El script ahora **reconecta `192.168.0.14:26101` antes de hacer `sdb push`**, comprueba que `sdb devices` lo muestre con estado `device` y reintenta la transferencia una sola vez en caso de reinicio. No cambia el certificado `RANDYTVPRO` ni las credenciales.
+
+En caso de fallo persistente, ejecuta para inspeccionar la conexión:
+
+```bash
+sdb connect 192.168.0.14:26101
+sdb devices
+```
+## Error al transferir el paquete al Samsung
+
+El error `Can not transfer ... package` significa que **Tizen no pudo enviar el archivo al TV**. No es todavía un rechazo de firma, ID ni manifiesto.
+
+El instalador comprueba ahora la integridad ZIP, muestra el tamaño y prueba primero `tizen install`. Si falla específicamente la transferencia, intenta un `sdb push` con nombre remoto único y luego `sdb shell 0 vd_appinstall RANDYTV123.RandyTV <ruta-remota>`. No borra las aplicaciones existentes ni modifica certificados o credenciales.
+
+Si también falla el envío directo, comprueba que `sdb devices` muestre el Samsung, revisa tamaño del WGT y espacio del dispositivo. No declares instalada la aplicación sin confirmación del televisor.
+
+```bash
+git pull --ff-only
+bash tizen/scripts/instalar-en-tv.sh 192.168.0.14 RANDYTVPRO
+```
+
+## Uso con control remoto
+
+| Tecla | Función |
+| --- | --- |
+| ▲ ▼ ◀ ▶ | Cambiar el elemento seleccionado en los menús |
+| OK / Enter | Abrir la opción enfocada o mostrar controles de reproducción |
+| Return / Back | Volver al listado, cerrar detalles o volver a Inicio |
+| CH+ / CH− | En reproducción de TV: canal siguiente / anterior |
+| Números | Durante TV: buscar canal por número \`num\` de la lista |
+| ◀ / ▶ durante película o serie | Retroceder / avanzar 15 segundos |
+| Play/Pause | Pausar o reanudar, si lo permite la señal |
+
+## Privacidad y protección
+- La app **no incluye credenciales por defecto**. Sólo emplea los datos ingresados por el propietario del televisor.
+- **Recordar acceso** almacena los datos en \`localStorage\` del TV, que no es un almacén cifrado de credenciales. Desactiva la casilla si es compartido.
+- Los favoritos y el historial se almacenan localmente.
+- Para cambiar las credenciales abre **Ajustes** y confirma. La app elimina las credenciales recordadas.
+- **No subas credenciales a GitHub**. Si una versión anterior tiene contraseñas embebidas, revócalas o cámbialas con el proveedor.
+
+## Arquitectura
+- \`config.xml\`: manifiesto Tizen, permisos de Internet y control remoto.
+- \`index.html\`: estructura accesible de configuración, Inicio, catálogo, detalles y reproductor.
+- \`css/app.css\`: interfaz grande y ligera para TV, compatible con motores de navegador antiguos.
+- \`js/app.js\`: catálogo Xtream, navegación, almacenamiento local, reproducción AVPlay/HTML5.
+
+## Pruebas pendientes en TV real
+- Confirmar instalación, certificado, tecla Return y registro de CH± en el modelo específico.
+- Comprobar autorización/CORS del API con el proveedor legítimo.
+- Validar códecs y contenedores en AVPlay; probar audio, HLS, buffering y cambio de canales.
+- Verificar rendimiento en Tizen antiguos (modelos 2017–2019), especialmente con catálogos muy grandes.
+- Revisar navegación al abrir el teclado virtual del TV.
+
+## Cambios intencionales respecto a RandyTVandroid
+El proyecto Android utiliza Kotlin/Jetpack Compose y ExoPlayer, mientras que Samsung exige app web empaquetada y reproducción basada en AVPlay. Se mantiene la estructura de categorías y contenidos de la API, pero se simplifica el diseño y la cantidad de elementos visibles para hacerlo más cómodo a personas mayores.
