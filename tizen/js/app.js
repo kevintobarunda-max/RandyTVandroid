@@ -31,38 +31,208 @@
   function toggleFav(type,item){var k=itemKey(type,item),idx=state.favorites.indexOf(k);if(idx!==-1)state.favorites.splice(idx,1);else state.favorites.push(k);store.write("randy_tizen_favorites",state.favorites);notify(idx!==-1?"Quitado de favoritos":"Agregado a favoritos");if($("player").className.indexOf("hidden")===-1)updatePlayerFav();else render();}
   function allItems(type){return type==="live"?state.live:type==="vod"?state.vod:state.series;}
   function favItems(){var out=[];state.favorites.forEach(function(k){var p=k.split(":"),list=allItems(p[0]);for(var i=0;i<list.length;i++){if(String(itemId(list[i],p[0]))===p[1]){out.push({type:p[0],item:list[i]});break;}}});return out;}
-  function selectSection(section){stopPlayerIfOpen();state.section=section;state.category="all";state.query="";state.page=0;state.detail=null;state.seriesInfo=null;showView("main");var tabs=document.querySelectorAll(".tab");for(var i=0;i<tabs.length;i++)tabs[i].className="tab focusable"+(tabs[i].getAttribute("data-nav")===section?" selected":"");render();$("content").scrollTop=0;focusFirst();}
+  function sectionLabel(section){return section==="home"?"Inicio":section==="live"?"TV en vivo":section==="vod"?"Películas":section==="series"?"Series":"Favoritos";}
+  function selectSection(section){
+    stopPlayerIfOpen();
+    state.section=section;state.category="all";state.query="";state.page=0;state.detail=null;state.seriesInfo=null;
+    showView("main");
+    $("top-title").textContent=sectionLabel(section);
+    var tabs=document.querySelectorAll(".tab[data-nav]");
+    for(var i=0;i<tabs.length;i++){
+      var selected=tabs[i].getAttribute("data-nav")===section;
+      tabs[i].className="tab focusable"+(selected?" selected":"");
+      tabs[i].setAttribute("aria-current",selected?"page":"false");
+    }
+    render();$("content").scrollTop=0;focusFirst();
+  }
   function focusFirst(){var first=document.querySelector("#content .focusable")||$("go-home");if(first)first.focus();}
-  function render(){if(state.detail){renderDetail();return;}if(state.section==="home"){renderHome();return;}var label=state.section==="live"?"TV en vivo":state.section==="vod"?"Películas":state.section==="series"?"Series":"Favoritos";
-    var h='<div class="section-top"><h1>'+label+'</h1><span class="count" id="result-count"></span></div><div class="toolbar"><input class="search-input focusable" id="search" placeholder="⌕ Buscar por nombre" aria-label="Buscar contenido" type="search"/></div><div class="categories" id="cats"></div><div class="media-grid" id="media-grid"></div><div class="more-holder" id="more-holder"></div>';
-    $("content").innerHTML=h;$("search").value=state.query;$("search").addEventListener("input",function(){state.query=this.value;state.page=0;renderResults();});
+  function render(){
+    if(state.detail){renderDetail();return;}
+    if(state.section==="home"){renderHome();return;}
+    var label=sectionLabel(state.section);
+    var h='<div class="section-top"><div><span class="eyebrow">TU BIBLIOTECA</span><h1>'+label+'</h1></div><span class="count" id="result-count">Cargando…</span></div>'+
+      '<div class="toolbar"><input class="search-input focusable" id="search" placeholder="⌕  Buscar por nombre" aria-label="Buscar '+label+'" type="search"/></div>'+
+      '<div class="categories" id="cats" aria-label="Filtrar por categoría"></div>'+
+      '<div class="media-grid'+(state.section==="vod"||state.section==="series"?" poster-grid":"")+'" id="media-grid"></div>'+
+      '<div class="more-holder" id="more-holder"></div>';
+    $("content").innerHTML=h;
+    $("search").value=state.query;
+    $("search").addEventListener("input",function(){state.query=this.value;state.page=0;renderResults();});
     renderCategories();renderResults();
   }
-  function renderHome(){var len=state.history.length,desc=len?"Puedes volver a tus programas favoritos.":"Elige qué quieres ver con el botón OK."; $("content").innerHTML='<div class="hero"><div><h1>¿Qué quieres ver hoy?</h1><p>'+desc+'</p></div></div><div class="home-tiles"><button class="home-tile focusable" data-section="live"><span class="tile-icon">▣</span><strong>Ver televisión</strong><small>Canales en vivo</small></button><button class="home-tile focusable" data-section="favorites"><span class="tile-icon">★</span><strong>Mis favoritos</strong><small>Tus canales y programas preferidos</small></button><button class="home-tile focusable" data-section="vod"><span class="tile-icon">▶</span><strong>Películas</strong><small>Elige una película y disfruta</small></button><button class="home-tile focusable" data-section="series"><span class="tile-icon">▤</span><strong>Series</strong><small>Temporadas y capítulos</small></button></div>';
-    var buttons=$("content").querySelectorAll("[data-section]");for(var i=0;i<buttons.length;i++)buttons[i].onclick=function(){selectSection(this.getAttribute("data-section"));};
+  function renderHome(){
+    var h='<div class="home-hero"><div class="hero-copy">'+
+      '<span class="eyebrow">●  BIENVENIDO A RANDY TV</span>'+
+      '<h1>Todo lo que te gusta,<br/>en un solo lugar<span>.</span></h1>'+
+      '<p>Tu televisión, películas y series favoritas. Sin menús complicados, solo disfruta.</p>'+
+      '<div class="hero-actions">'+
+      '<button class="primary focusable" data-section="live" type="button">▶ &nbsp; Ver TV en vivo</button>'+
+      '<button class="ghost-button focusable" data-section="favorites" type="button">☆ &nbsp; Mis favoritos</button>'+
+      '</div></div>'+
+      '<div class="hero-art" aria-hidden="true"><div class="hero-screen"><strong>R</strong><small>RANDY TV</small></div><span class="art-chip">● EN VIVO</span></div></div>'+
+      '<div class="home-head"><span class="eyebrow">ACCESOS RÁPIDOS</span><h2>¿Qué te gustaría ver?</h2></div>'+
+      '<div class="home-tiles">'+
+      '<button class="home-tile tile-live focusable" data-section="live" type="button"><span class="tile-icon">▣</span><strong>TV en vivo</strong><small>Todos tus canales</small></button>'+
+      '<button class="home-tile tile-vod focusable" data-section="vod" type="button"><span class="tile-icon">▶</span><strong>Películas</strong><small>Para todos los gustos</small></button>'+
+      '<button class="home-tile tile-series focusable" data-section="series" type="button"><span class="tile-icon">▤</span><strong>Series</strong><small>Temporadas y episodios</small></button>'+
+      '<button class="home-tile tile-favorites focusable" data-section="favorites" type="button"><span class="tile-icon">☆</span><strong>Favoritos</strong><small>Lo que más disfrutas</small></button>'+
+      '</div>';
+    var recent=[],seen={};
+    for(var j=0;j<state.history.length&&recent.length<4;j++){
+      var key=state.history[j].key||"",parts=key.split(":");
+      if(parts[0]!=="vod"||seen[key])continue;
+      for(var k=0;k<state.vod.length;k++){
+        if(String(state.vod[k].stream_id)===parts[1]){
+          recent.push(state.vod[k]);seen[key]=true;break;
+        }
+      }
+    }
+    if(recent.length){
+      h+='<div class="home-head"><span class="eyebrow">A TU RITMO</span><h2>Continuar viendo</h2></div><div class="continue-list">';
+      for(var n=0;n<recent.length;n++){
+        h+='<button type="button" class="continue-card focusable" data-home-resume="'+n+'"><strong>▶ '+safe(recent[n].name)+'</strong><small>Retomar película</small></button>';
+      }
+      h+='</div>';
+    }
+    if(state.live.length){
+      h+='<div class="live-preview"><div class="home-head section-heading"><div><span class="eyebrow">SIEMPRE CONTIGO</span><h2>En vivo ahora</h2></div><small>Elige un canal con OK</small></div><div class="preview-grid">';
+      for(var i=0;i<Math.min(5,state.live.length);i++){
+        var it=state.live[i],img=picture(it,"live");
+        h+='<button type="button" class="preview-card focusable" data-home-live="'+i+'">';
+        h+=/^https?:\/\//i.test(img)?'<img src="'+safe(img)+'" alt=""/>':'<span class="preview-fallback">▣</span>';
+        h+='<strong>'+safe(it.name)+'</strong></button>';
+      }
+      h+='</div></div>';
+    }
+    $("content").innerHTML=h;
+    var buttons=$("content").querySelectorAll("[data-section]");
+    for(var b=0;b<buttons.length;b++)buttons[b].onclick=function(){selectSection(this.getAttribute("data-section"));};
+    var liveBtns=$("content").querySelectorAll("[data-home-live]");
+    for(var l=0;l<liveBtns.length;l++)liveBtns[l].onclick=function(){
+      var index=Number(this.getAttribute("data-home-live")),it=state.live[index];
+      if(!it)return;
+      var list=state.live.map(function(item){return {type:"live",item:item};});
+      openItem("live",it,list);
+    };
+    var resumeBtns=$("content").querySelectorAll("[data-home-resume]");
+    for(var x=0;x<resumeBtns.length;x++)resumeBtns[x].onclick=function(){
+      var index=Number(this.getAttribute("data-home-resume"));
+      if(recent[index])play("vod",recent[index]);
+    };
+    var homeImages=$("content").querySelectorAll(".preview-card img");
+    for(var z=0;z<homeImages.length;z++)homeImages[z].onerror=function(){this.style.display="none";};
   }
   function categories(){return state.section==="live"?state.liveCats:state.section==="vod"?state.vodCats:state.seriesCats;}
-  function renderCategories(){var el=$("cats");el.innerHTML="";if(state.section==="favorites")return;var cs=[{category_id:"all",category_name:"Todos"}];if(state.section==="live")cs.push({category_id:"24h",category_name:"24 horas"},{category_id:"light",category_name:"Señal ligera"},{category_id:"simpsons",category_name:"Los Simpson"});cs=cs.concat(categories());cs.forEach(function(c){var b=document.createElement("button");b.type="button";b.className="category focusable"+(state.category===String(c.category_id)?" selected":"");b.textContent=c.category_name;b.onclick=function(){state.category=String(c.category_id);state.page=0;renderCategories();renderResults();};el.appendChild(b);});}
+  function renderCategories(){
+    var el=$("cats");if(!el)return;el.innerHTML="";
+    if(state.section==="favorites")return;
+    var cs=[{category_id:"all",category_name:"Todos"}];
+    if(state.section==="live")cs.push({category_id:"24h",category_name:"24 horas"},{category_id:"light",category_name:"Señal ligera"},{category_id:"simpsons",category_name:"Los Simpson"});
+    cs=cs.concat(categories());
+    cs.forEach(function(c){
+      var b=document.createElement("button");
+      b.type="button";b.className="category focusable"+(state.category===String(c.category_id)?" selected":"");
+      b.textContent=c.category_name;
+      b.setAttribute("aria-pressed",state.category===String(c.category_id)?"true":"false");
+      b.onclick=function(){
+        state.category=String(c.category_id);state.page=0;
+        renderCategories();renderResults();
+        var selected=el.querySelector(".category.selected");if(selected)selected.focus();
+      };
+      el.appendChild(b);
+    });
+  }
   function getFiltered(){var q=state.query.toLowerCase().trim(),arr=[];if(state.section==="favorites")arr=favItems();else arr=allItems(state.section).map(function(i){return {type:state.section,item:i};});
     if(state.category!=="all"){arr=arr.filter(function(w){var c=state.category,n=String(w.item.name||"").toLowerCase();if(c==="24h")return /24[\s\/-]?(h|horas|7)/i.test(n);if(c==="simpsons")return n.indexOf("simpson")!==-1;if(c==="light")return /2\s?mb|\|\s?2\b|\|\s?sd\b|\bsd\b/i.test(n);return String(w.item.category_id)===c;});}
     if(q)arr=arr.filter(function(w){return String(w.item.name||"").toLowerCase().indexOf(q)!==-1;});
     return arr;
   }
   function picture(item,type){return item.stream_icon||item.cover||(item.info&&item.info.movie_image)||"";}
-  function renderResults(){var el=$("media-grid"),more=$("more-holder");if(!el)return;var list=getFiltered(),count=$("result-count");count.textContent=list.length+" disponibles";var slice=list.slice(0,(state.page+1)*state.pageSize);el.innerHTML="";
-    if(!list.length){el.innerHTML='<div class="empty">'+(state.section==="favorites"?"Todavía no tienes favoritos. Abre un canal y pulsa ☆ Favorito.":state.query?"No encontramos resultados para esa búsqueda.":"Cargando contenido… Si no aparece, revisa la conexión.")+'</div>';}
-    var fragment=document.createDocumentFragment();slice.forEach(function(w,idx){var it=w.item,ty=w.type,b=document.createElement("button");b.type="button";b.className="media-card focusable"+(ty==="live"?"":" poster");b.setAttribute("aria-label",it.name);var src=picture(it,ty),img=src?'<img loading="lazy" alt="" data-src="'+safe(src)+'"/>':'<span class="card-placeholder">'+(ty==="live"?"▣":"▶")+'</span>';b.innerHTML=img+'<span class="text-content"><strong>'+safe(it.name)+'</strong><small>'+(ty==="live"?"Canal "+safe(it.num||idx+1):ty==="vod"?"Película":"Serie")+(isFav(ty,it)?" · ★":"")+'</small></span>';b.onclick=function(){openItem(ty,it,list);};fragment.appendChild(b);});el.appendChild(fragment);
-    // Keep images only for visible cards; capped result batch limits DOM size on slower TVs.
-    var images=el.querySelectorAll("img[data-src]");for(var i=0;i<images.length;i++){(function(img){var src=img.getAttribute("data-src");if(!/^https?:\/\//i.test(src))return;img.onerror=function(){this.style.display="none";};img.src=src;})(images[i]);}
-    more.innerHTML="";if(list.length>slice.length){var b=document.createElement("button");b.className="more-button focusable";b.textContent="Ver más ("+(list.length-slice.length)+" restantes)";b.onclick=function(){var key=document.activeElement;state.page++;renderResults();var items=$("media-grid").querySelectorAll(".media-card");if(items.length)items[Math.min((state.page)*state.pageSize,items.length-1)].focus();};more.appendChild(b);}
+  var imageObserver=null;
+  function hydrateThumbs(el){
+    if(imageObserver){imageObserver.disconnect();imageObserver=null;}
+    var images=el.querySelectorAll("img[data-src]");
+    function loadImg(img){
+      var src=img.getAttribute("data-src");
+      if(!/^https?:\/\//i.test(src))return;
+      img.onerror=function(){this.style.display="none";};
+      img.src=src;img.removeAttribute("data-src");
+    }
+    if("IntersectionObserver" in window){
+      imageObserver=new IntersectionObserver(function(entries,obs){
+        for(var i=0;i<entries.length;i++)if(entries[i].isIntersecting){loadImg(entries[i].target);obs.unobserve(entries[i].target);}
+      },{root:$("content"),rootMargin:"220px 0px"});
+      for(var j=0;j<images.length;j++)imageObserver.observe(images[j]);
+    }else{
+      for(var k=0;k<images.length;k++)loadImg(images[k]);
+    }
+  }
+  function renderResults(){
+    var el=$("media-grid"),more=$("more-holder");if(!el)return;
+    var list=getFiltered(),count=$("result-count");
+    count.textContent=list.length+" disponibles";
+    var slice=list.slice(0,(state.page+1)*state.pageSize);
+    el.innerHTML="";
+    if(!list.length){
+      el.innerHTML='<div class="empty">'+
+        (state.section==="favorites"?"Todavía no tienes favoritos. Abre un contenido y pulsa ☆ Favorito.":
+        state.query?"No encontramos resultados para esa búsqueda.":"Todavía no hay contenido disponible. Si acabas de entrar, espera a que termine la carga.")+
+        '</div>';
+    }
+    var fragment=document.createDocumentFragment();
+    slice.forEach(function(w,idx){
+      var it=w.item,ty=w.type,b=document.createElement("button");
+      b.type="button";b.className="media-card focusable"+(ty==="live"?"":" poster");
+      b.setAttribute("aria-label",it.name||"Abrir contenido");
+      var src=picture(it,ty),img=/^https?:\/\//i.test(src)?'<img alt="" data-src="'+safe(src)+'"/>':'<span class="card-placeholder">'+(ty==="live"?"▣":"▶")+'</span>';
+      b.innerHTML=img+'<span class="text-content"><strong>'+safe(it.name)+'</strong><small>'+
+        (ty==="live"?"CANAL "+safe(it.num||idx+1):ty==="vod"?"PELÍCULA":"SERIE")+
+        (isFav(ty,it)?' <span class="star">★</span>':"")+'</small></span>';
+      b.onclick=function(){openItem(ty,it,list);};
+      fragment.appendChild(b);
+    });
+    el.appendChild(fragment);
+    hydrateThumbs(el);
+    more.innerHTML="";
+    if(list.length>slice.length){
+      var b=document.createElement("button");
+      b.className="more-button focusable";b.type="button";
+      b.textContent="Ver más contenido · "+(list.length-slice.length)+" restantes";
+      b.onclick=function(){
+        state.page++;renderResults();
+        var items=$("media-grid").querySelectorAll(".media-card");
+        if(items.length)items[Math.min(state.page*state.pageSize,items.length-1)].focus();
+      };
+      more.appendChild(b);
+    }
   }
   function openItem(type,item,list){if(type==="live"){state.playlist=list.filter(function(w){return w.type==="live";}).map(function(w){return w.item;});state.playlistIndex=0;for(var li=0;li<state.playlist.length;li++){if(String(state.playlist[li].stream_id)===String(item.stream_id)){state.playlistIndex=li;break;}}play("live",item);return;}
     state.detail={type:type,item:item};state.seriesInfo=null;render();focusFirst();if(type==="series"){var id=String(item.series_id),current=state.detail;request(getURL("get_series_info",id),function(err,data){if(!err&&state.detail===current){state.seriesInfo=data;renderDetail();}});}
   }
-  function renderDetail(){var d=state.detail;if(!d)return;var i=d.item,t=d.type,img=picture(i,t);var poster=img?'<img class="detail-poster" alt="" src="'+safe(img)+'"/>':'<div class="detail-poster"></div>';var plot=safe(i.plot||state.seriesInfo&&state.seriesInfo.info&&state.seriesInfo.info.plot||"Elige reproducir para disfrutar este contenido.");var h='<div class="detail-layout">'+poster+'<div class="detail-copy"><h1>'+safe(i.name)+'</h1><p>'+plot+'</p><div class="detail-actions"><button id="play-detail" class="primary focusable">'+(t==="vod"?"▶ Reproducir":"Ver capítulos")+'</button><button id="fav-detail" class="secondary-action focusable">'+(isFav(t,i)?"★ Quitar favorito":"☆ Agregar a favoritos")+'</button><button id="back-detail" class="secondary-action focusable">← Volver</button></div></div></div><div id="episodes"></div>';$("content").innerHTML=h;
-    $("back-detail").onclick=closeDetail;$("fav-detail").onclick=function(){toggleFav(t,i);renderDetail();};
-    if(t==="vod"){$("play-detail").onclick=function(){play("vod",i);};var hist=findHistory(t,i);if(hist&&hist.position>30)$("play-detail").textContent="▶ Continuar película";}
-    else{$("play-detail").onclick=function(){var b=$("episodes").querySelector(".episode-button");if(b)b.focus();else notify("Cargando capítulos…");};renderEpisodes();}
+  function renderDetail(){
+    var d=state.detail;if(!d)return;
+    var i=d.item,t=d.type,img=picture(i,t);
+    var poster=/^https?:\/\//i.test(img)?'<img class="detail-poster" alt="" src="'+safe(img)+'"/>':'<div class="detail-poster"></div>';
+    var plot=safe(i.plot||(state.seriesInfo&&state.seriesInfo.info&&state.seriesInfo.info.plot)||"Elige reproducir para disfrutar este contenido.");
+    var h='<div class="detail-layout">'+poster+'<div class="detail-copy">'+
+      '<span class="eyebrow">'+(t==="vod"?"PELÍCULA":"SERIE")+' · RANDY TV</span>'+
+      '<h1>'+safe(i.name)+'</h1><p>'+plot+'</p><div class="detail-actions">'+
+      '<button id="play-detail" class="primary focusable" type="button">'+(t==="vod"?"▶ Reproducir":"Ver capítulos")+'</button>'+
+      '<button id="fav-detail" class="secondary-action focusable" type="button">'+(isFav(t,i)?"★ Quitar favorito":"☆ Agregar a favoritos")+'</button>'+
+      '<button id="back-detail" class="secondary-action focusable" type="button">← Volver</button>'+
+      '</div></div></div><div id="episodes"></div>';
+    $("content").innerHTML=h;
+    $("back-detail").onclick=closeDetail;
+    $("fav-detail").onclick=function(){toggleFav(t,i);renderDetail();$("fav-detail").focus();};
+    if(t==="vod"){
+      $("play-detail").onclick=function(){play("vod",i);};
+      var hist=findHistory(t,i);if(hist&&hist.position>30)$("play-detail").textContent="▶ Continuar película";
+    }else{
+      $("play-detail").onclick=function(){
+        var b=$("episodes").querySelector(".episode-button");if(b)b.focus();else notify("Cargando capítulos…");
+      };
+      renderEpisodes();
+    }
   }
   function renderEpisodes(){if(!state.seriesInfo||!state.detail)return;var eps=state.seriesInfo.episodes||{},keys=Object.keys(eps).sort(function(a,b){return Number(a)-Number(b);}),el=$("episodes");if(!keys.length){el.innerHTML='<div class="empty">No hay capítulos disponibles o aún se están cargando.</div>';return;}var html="";keys.forEach(function(k){html+='<h2>Temporada '+safe(k)+'</h2><div class="episode-list">';(eps[k]||[]).forEach(function(ep){var epName=ep.title||"Capítulo "+(ep.episode_num||"");html+='<button class="episode-button focusable" data-episode="'+safe(ep.id)+'" data-season="'+safe(k)+'">▶ '+safe(ep.episode_num||"")+" · "+safe(epName)+'</button>';});html+='</div>';});el.innerHTML=html;var buttons=el.querySelectorAll("[data-episode]");for(var z=0;z<buttons.length;z++)buttons[z].onclick=function(){var epList=eps[this.getAttribute("data-season")]||[],id=this.getAttribute("data-episode");for(var j=0;j<epList.length;j++)if(String(epList[j].id)===id){var ep=epList[j];ep.name=state.detail.item.name+" · "+(ep.title||"Capítulo "+ep.episode_num);play("series",ep);break;}};}
   function closeDetail(){state.detail=null;state.seriesInfo=null;render();focusFirst();}
@@ -93,16 +263,20 @@
   function numberKey(num){if(!state.playing||state.playing.type!=="live")return;state.remoteDigits=(state.remoteDigits+num).slice(-4);$("number-bubble").textContent=state.remoteDigits;$("number-bubble").className="number-bubble";clearTimeout(digitTimer);digitTimer=setTimeout(function(){var n=parseInt(state.remoteDigits,10);state.remoteDigits="";$("number-bubble").className="number-bubble hidden";if(!n)return;var match=null;for(var j=0;j<state.playlist.length;j++){if(Number(state.playlist[j].num)===n){match=j;break;}}if(match===null&&n<=state.playlist.length)match=n-1;if(match!==null){state.playlistIndex=match;play("live",state.playlist[match]);}else notify("No existe el canal "+n+" en esta lista.");},1100);}
   function keyDown(event){var k=event.keyCode||event.which,playing=!!state.playing,typing=document.activeElement&&(/INPUT|TEXTAREA/.test(document.activeElement.tagName));var defs={37:"left",38:"up",39:"right",40:"down"};if(k===10009||k===8||k===27){if(typing){document.activeElement.blur();return;}event.preventDefault();pressBack();return;}
     if(playing){if(k>=48&&k<=57){event.preventDefault();numberKey(String(k-48));return;}if(k===427||k===33||k===38){event.preventDefault();zap(1);return;}if(k===428||k===34||k===40){event.preventDefault();zap(-1);return;}if(k===415||k===19||k===10252){event.preventDefault();togglePause();return;}if(k===413){event.preventDefault();leavePlayer();return;}if(k===37||k===39){event.preventDefault();if(state.playing.type!=="live")seekTo(Math.max(0,getCurrentTime()+(k===39?15:-15)));showOverlay();return;}if(k===13){event.preventDefault();if($("player-bottom").style.display==="none"){showOverlay();$("player-pause").focus();}else if(document.activeElement&&document.activeElement.tagName==="BUTTON")document.activeElement.click();else showOverlay();return;}showOverlay();return;}
-    if(typing){if(k===13){event.preventDefault();document.activeElement.blur();}return;}
+    if(typing){if(k===38||k===40){event.preventDefault();moveFocus(k===38?"up":"down");return;}if(k===13){event.preventDefault();document.activeElement.blur();}return;}
     if(defs[k]){event.preventDefault();moveFocus(defs[k]);return;}if(k===13){var a=document.activeElement;if(a&&a.tagName==="BUTTON"){event.preventDefault();a.click();}return;}if(k===427||k===428){event.preventDefault();selectSection("live");return;}
   }
   function registerKeys(){try{if(window.tizen&&tizen.tvinputdevice){tizen.tvinputdevice.registerKeyBatch(["ChannelUp","ChannelDown","MediaPlayPause","MediaPlay","MediaPause","MediaStop","ColorF0Red","ColorF1Green","ColorF2Yellow","ColorF3Blue"]);}}catch(e){console.warn("Remote key registration:",e);}}
+  function updateClock(){
+    var now=new Date(),el=$("clock-display");
+    if(el)el.textContent=two(now.getHours())+":"+two(now.getMinutes());
+  }
   function attach(){document.addEventListener("keydown",keyDown);$("login-form").addEventListener("submit",startLogin);$("go-home").onclick=function(){selectSection("home");};$("settings-button").onclick=settings;
     var tabs=document.querySelectorAll("[data-nav]");for(var i=0;i<tabs.length;i++)tabs[i].onclick=function(){selectSection(this.getAttribute("data-nav"));};
     $("player-back").onclick=leavePlayer;$("player-prev").onclick=function(){zap(-1);};$("player-next").onclick=function(){zap(1);};$("player-pause").onclick=togglePause;$("player-fav").onclick=function(){if(state.playing)toggleFav(state.playing.type,state.playing.item);};
     document.addEventListener("visibilitychange",function(){if(document.hidden&&state.playing){rememberPosition();try{if(playerMode==="av")webapis.avplay.pause();else $("html-player").pause();}catch(e){}}});
     window.addEventListener("beforeunload",function(){stopPlayback();});
-    registerKeys();var local=window.RANDY_LOCAL_CONFIG;var saved=(local&&local.server&&local.username&&local.password)?local:store.read("randy_tizen_login",null);if(saved&&saved.server&&saved.username&&saved.password){state.credentials=saved;$("server").value=saved.server;$("username").value=saved.username;$("password").value=saved.password;launch();}else{showView("setup");$("server").focus();}
+    registerKeys();updateClock();setInterval(updateClock,60000);var local=window.RANDY_LOCAL_CONFIG;var saved=(local&&local.server&&local.username&&local.password)?local:store.read("randy_tizen_login",null);if(saved&&saved.server&&saved.username&&saved.password){state.credentials=saved;$("server").value=saved.server;$("username").value=saved.username;$("password").value=saved.password;launch();}else{showView("setup");$("server").focus();}
   }
   if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",attach);else attach();
 })();
