@@ -229,6 +229,18 @@ bash tizen/scripts/instalar-en-tv.sh 192.168.0.14 RANDYTVPRO
 
 Si vuelve a fallar, **no regenerar certificados ni credenciales**. El siguiente diagnóstico es aislar el manifiesto con el mismo contenido de la app, o revisar el mensaje de error detallado del instalador para esa versión de Tizen.
 
+### Reconexión automática cuando SDB pierde el serial
+
+Si durante la instalación se ve `Can not transfer ... package` y luego el envío alternativo indica `target not found` o `serial number ... wrong`, el servidor SDB del Mac puede haberse reiniciado, perdiendo la conexión TCP con el televisor.
+
+El script ahora **reconecta `192.168.0.14:26101` antes de hacer `sdb push`**, comprueba que `sdb devices` lo muestre con estado `device` y reintenta la transferencia una sola vez en caso de reinicio. No cambia el certificado `RANDYTVPRO` ni las credenciales.
+
+En caso de fallo persistente, ejecuta para inspeccionar la conexión:
+
+```bash
+sdb connect 192.168.0.14:26101
+sdb devices
+```
 ## Error al transferir el paquete al Samsung
 
 El error `Can not transfer ... package` significa que **Tizen no pudo enviar el archivo al TV**. No es todavía un rechazo de firma, ID ni manifiesto.
