@@ -90,8 +90,29 @@
           <button id="player-pause" class="focusable" type="button">❚❚ Pausa</button>
           <button id="player-next" class="focusable" type="button">Siguiente ❯</button>
           <button id="player-fav" class="focusable" type="button">☆ Favorito</button>
+          <button id="player-audio" class="focusable track-action" type="button">♫ Audio</button>
+          <button id="player-subtitles" class="focusable track-action" type="button">CC Subtítulos</button>
         </div>
-        <div id="player-help" class="player-help">↑ ↓ Cambiar canal <span>·</span> Números para ir a un canal <span>·</span> ↩ Volver</div>
+        <div id="player-help" class="player-help">▲ ▼ o CH +/− para hacer zapping <span>·</span> OK para controles <span>·</span> ↩ Volver</div>
+      </div>
+      <div id="zap-card" class="zap-card hidden" role="status" aria-live="off">
+        <span class="zap-accent"></span>
+        <div id="zap-logo" class="zap-logo" aria-hidden="true">▣</div>
+        <div class="zap-copy">
+          <div class="zap-eyebrow">CAMBIANDO DE CANAL <span id="zap-position"></span></div>
+          <div class="zap-main"><span id="zap-number" class="zap-number"></span><strong id="zap-title">Canal</strong></div>
+          <div id="zap-status" class="zap-status">Conectando con la señal…</div>
+        </div>
+        <div class="zap-remote">▲<br/>▼</div>
+      </div>
+      <div id="track-panel" class="track-panel hidden" role="dialog" aria-modal="true" aria-label="Selección de audio y subtítulos">
+        <div class="track-panel-head">
+          <span class="eyebrow">RANDY TV · REPRODUCTOR</span>
+          <div class="track-panel-top"><h2 id="track-title">Pistas de audio</h2><button id="track-close" class="track-close focusable" type="button">✕ Cerrar</button></div>
+          <p id="track-description">Elige una pista disponible en esta señal.</p>
+        </div>
+        <div id="track-options" class="track-options" aria-live="polite"></div>
+        <p class="track-help">Usa ▲ ▼ y OK para seleccionar · ↩ para volver</p>
       </div>
       <div id="number-bubble" class="number-bubble hidden"></div>
     </section>
