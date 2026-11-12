@@ -231,18 +231,55 @@ fi
 
 # La transferencia ocurre antes de verificar el manifiesto o certificados.
 if grep -Eiq 'Can not transfer .*package|problem to transfer package|Transfer.*fail' "$INSTALL_LOG"; then
-  echo "La CLI no pudo TRANSFERIR el archivo. Intentando SDB directo..."
+  echo "La CLI no pudo TRANSFERIR el archivo. Reconectando SDB antes de reintentar..."
+  # La herramienta 'tizen install' puede reiniciar el servidor SDB de macOS.
+  # En ese caso, el serial del TV deja de existir hasta que lo reconectamos.
+  reconnect_sdb() {
+    echo "Reconectando $SERIAL..."
+    sdb connect "$SERIAL" || true
+    sleep 1
+    local connected
+    connected="$(sdb devices 2>&1 || true)"
+    echo "$connected"
+    printf '%s\n' "$connected" | awk -v serial="$SERIAL" '$1==serial && $2=="device" {found=1} END{exit !found}'
+  }
+  if ! reconnect_sdb; then
+    echo "✗ El televisor no aparece como dispositivo conectado tras el reinicio de SDB."
+    echo "Comprueba que siga encendido y Developer Mode esté activo."
+    echo "Ejecuta: sdb connect $SERIAL ; sdb devices"
+    exit 1
+  fi
+
   REMOTE_NAME="RandyTV-$(date +%Y%m%d%H%M%S)-$$.wgt"
   REMOTE_PATH="/home/owner/share/tmp/sdk_tools/$REMOTE_NAME"
   PUSH_LOG="$(mktemp "${TMPDIR:-/tmp}/randy-sdb-push.XXXXXX")"
+  echo "Transfiriendo el WGT directamente a: $REMOTE_PATH"
   set +e
   sdb -s "$SERIAL" push "$WGT" "$REMOTE_PATH" 2>&1 | tee "$PUSH_LOG"
   PUSH_RC=${PIPESTATUS[0]}
   set -e
-  if [[ "$PUSH_RC" -ne 0 ]] || grep -Eiq 'fail|error|closed|permission denied|no space|not found' "$PUSH_LOG" || ! grep -Eiq 'pushed|transferred|100%' "$PUSH_LOG"; then
-    echo "✗ La transferencia directa SDB también falló."
-    echo "Verifica conexión y estado del televisor: sdb devices"
-    echo "Verifica espacio y tamaño del archivo; no es un problema confirmado de certificado."
+
+  # Un error 'target not found' no prueba que el paquete esté dañado:
+  # el servidor SDB perdió la conexión. Reconectar y repetir una sola vez.
+  if [[ "$PUSH_RC" -ne 0 ]] || grep -Eiq 'target not found|serial number .* wrong|Server is not running' "$PUSH_LOG"; then
+    echo "La conexión volvió a fallar durante el envío. Reintentando una vez..."
+    if ! reconnect_sdb; then
+      echo "✗ No se recuperó la conexión SDB."
+      exit 1
+    fi
+    REMOTE_NAME="RandyTV-$(date +%Y%m%d%H%M%S)-$$-retry.wgt"
+    REMOTE_PATH="/home/owner/share/tmp/sdk_tools/$REMOTE_NAME"
+    : > "$PUSH_LOG"
+    set +e
+    sdb -s "$SERIAL" push "$WGT" "$REMOTE_PATH" 2>&1 | tee "$PUSH_LOG"
+    PUSH_RC=${PIPESTATUS[0]}
+    set -e
+  fi
+
+  if [[ "$PUSH_RC" -ne 0 ]] || grep -Eiq 'fail|error|closed|permission denied|no space|not found|serial number .* wrong' "$PUSH_LOG" || ! grep -Eiq 'pushed|transferred|100%' "$PUSH_LOG"; then
+    echo "✗ No se pudo transferir el archivo por SDB, incluso después de reconectar."
+    echo "Diagnóstico sugerido: sdb connect $SERIAL ; sdb devices"
+    echo "Revisa la conexión, el espacio libre y los mensajes SDB anteriores."
     exit 1
   fi
   echo "✓ SDB transfirió el archivo. Iniciando instalación directa en Samsung..."
