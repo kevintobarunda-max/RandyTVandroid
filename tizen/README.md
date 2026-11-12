@@ -1,4 +1,29 @@
 # Randy TV para Samsung Tizen (TV) — versión de uso sencillo
+## Randy TV Samsung 1.2.0: guía inspirada en Zapping
+
+Rediseño visual de la navegación de canales, **sin usar marcas ni materiales privados de Zapping**:
+
+- TV en vivo: cuadrícula de logos provenientes del proveedor, número de canal y foco resaltado.
+- Dentro de la reproducción, **OK** abre una guía superpuesta al video con riel vertical de canales, programa **Ahora**, **Siguiente**, horarios y progreso cuando el proveedor ofrece EPG.
+- **▲/▼** en la guía explora otros canales sin interrumpir lo que estás viendo; **◀/▶** cambia entre las tarjetas de programación; **OK** sintoniza el canal destacado.
+- Fuera de la guía, **CH+/CH−** y **▲/▼** siguen haciendo zapping directo con una tarjeta inmediata; el video empieza cuando el servidor y el decodificador terminan de preparar la señal.
+- Desde la guía se accede a audio, subtítulos y favoritos. Durante la reproducción, botón verde Samsung abre audio y botón amarillo abre subtítulos (si están presentes en el control).
+- EPG: consulta asíncrona Xtream `get_short_epg` para el canal seleccionado, con caché de dos minutos y mensajes cuando no hay programación. No se inventan horarios.
+- Carga limitada: guía con 5–7 canales visibles y catálogo en lotes de 48; sin blur, frameworks ni vídeos de fondo para más fluidez.
+- **No hay replay de programas**: requiere soporte y permisos específicos del proveedor.
+- Código revisado estáticamente. La **instalación y reproducción real en Samsung aún deben probarse**.
+
+### Actualizar e instalar en Samsung
+
+```bash
+cd ~/Downloads/RandyTVandroid
+git switch feat/tizen-senior-friendly
+git pull --ff-only
+bash tizen/scripts/instalar-en-tv.sh 192.168.0.14 RANDYTVPRO
+```
+
+El script comprueba firma e integridad y prueba transferencia SDB alternativa si la primera falla. El éxito debe confirmarlo el televisor. Las credenciales locales no se suben al repositorio.
+
 
 Aplicación **web nativa de Tizen TV** independiente del código Android de este repositorio. No es posible convertir directamente el APK de Android a un paquete Samsung \`.wgt\`. La versión Tizen vive en \`tizen/\`, sin reemplazar la app original.
 
