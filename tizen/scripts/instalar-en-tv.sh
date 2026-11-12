@@ -106,8 +106,22 @@ sdb devices
 SERIAL="${TV_IP}:26101"
 
 echo "4/4 Instalando $(basename "$WGT") en $SERIAL"
-tizen install -s "$SERIAL" -n "$(basename "$WGT")" -- "$(dirname "$WGT")"
-
-echo "✓ Comando de instalación enviado. Revisa que termine sin errores."
-echo "Busca Randy TV en Aplicaciones del televisor."
+INSTALL_LOG="$(mktemp "${TMPDIR:-/tmp}/randy-install.XXXXXX")"
+set +e
+tizen install -s "$SERIAL" -n "$(basename "$WGT")" -- "$(dirname "$WGT")" 2>&1 | tee "$INSTALL_LOG"
+INSTALL_RC=${PIPESTATUS[0]}
+set -e
+if [[ "$INSTALL_RC" -ne 0 ]] || grep -Eiq 'Failed to install Tizen application|install failed' "$INSTALL_LOG"; then
+  echo "✗ Tizen recibió el .wgt pero rechazó instalar Randy TV."
+  echo "Comprueba el perfil Samsung TV y el DUID. Prueba primero:"
+  echo "  bash tizen/scripts/diagnosticar-instalacion.sh $TV_IP $PROFILE"
+  rm -f "$INSTALL_LOG"
+  exit 1
+fi
+if grep -Eiq 'successfully installed|install completed|installation completed|install success' "$INSTALL_LOG"; then
+  echo "✓ Tizen informó instalación correcta; busca Randy TV en Aplicaciones."
+else
+  echo "El CLI no confirmó el resultado. Comprueba en Aplicaciones si aparece Randy TV."
+fi
+rm -f "$INSTALL_LOG"
 echo "NOTA: Para instalar, el TV requiere Developer Mode, IP del Mac permitida y certificado Samsung autorizado."
